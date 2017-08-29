@@ -13,16 +13,14 @@ name:                reprinter
 version:             0.1.0.0
 
 -- A short (one-line) description of the package.
-synopsis:            Srap Your Reprinter - A Datatype Generic Algorithm for Layout-Preserving Refactoring
+synopsis:            Scrap Your Reprinter
+
+description:         A datatype generic algorithm for layout-preserving refactoring
 
 -- A longer description of the package.
 -- description:         
-
--- The license under which the package is released.
-license:             BSD3
-
--- The file containing the license text.
-license-file:        LICENSE
+license:                Apache-2.0
+license-file:           LICENSE
 
 -- The package author(s).
 author:              Dominic Orchard, Harry Clarke
@@ -38,17 +36,16 @@ category:            Text
 
 build-type:          Simple
 
--- Extra files to be distributed with the package, such as examples or a 
--- README.
-extra-source-files:  ChangeLog.md
-
 -- Constraint on the version of Cabal needed to build this package.
 cabal-version:       >=1.10
 
+source-repository head
+  type: git
+  location: https://github.com/camfort/reprinter
 
 library
   -- Modules exported by the library.
-  exposed-modules:     Reprint
+  exposed-modules:     Text.Reprinter
   
   -- Modules included in this library but not exported.
   -- other-modules:       

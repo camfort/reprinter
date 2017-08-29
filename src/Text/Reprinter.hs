@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module Reprint
+module Text.Reprinter
   ( reprint
   , splitBySpan
   , Position(..)
