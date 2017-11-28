@@ -55,68 +55,54 @@ reprint reprinting ast input
     return (out <> remaining)
 
 -- | Take a refactoring and a zipper producing a stateful Source transformer with Position state.
-enter, enterDown, enterRight
-  :: Monad m
-  => Reprinting m -> Zipper a -> StateT (Position, Source) m Source
-
--- `enter` applies the generic refactoring to the current context
--- of the zipper
+enter :: Monad m => Reprinting m -> Zipper a -> StateT (Position, Source) m Source
 enter reprinting zipper = do
-  -- Step 1.
-  -- Apply a refactoring
-  refactoringInfo <- lift (query reprinting zipper)
+    -- Step 1.
+    -- Apply a refactoring
+    refactoringInfo <- lift (query reprinting zipper)
 
-  -- Step 2.
-  output <- case refactoringInfo of
-    -- No refactoring, so go into the children
-    Nothing -> enterDown reprinting zipper
-    -- A refactoring was applied
-    Just (typ, output, (lb, ub)) -> do
-      (cursor, inp) <- get
-      case typ of
-        Replace -> do
-          -- Get the soure text up to the start of the refactored expr
-          let (pre, inp') = splitBySpan (cursor, lb) inp
-          -- Discard the portion of source text consumed by the refactoring
-          let (_, inp'') = splitBySpan (lb, ub) inp'
-          put (ub, inp'')
-          return (pre <> output)
-        After -> do
-          -- Get the soure text up to the end of the refactored expr
-          let (pre, inp') = splitBySpan (cursor, ub) inp
-          put (ub, inp')
-          return (pre <> output)
-        Before -> do
-          -- Get the soure text up to the start of the refactored expr
-          let (pre, inp') = splitBySpan (cursor, lb) inp
-          -- Cut out the portion of source text consumed by the refactoring
-          let (post, inp'') = splitBySpan (lb, ub) inp'
-          put (ub, inp'')
-          return (pre <> output <> post)
+    -- Step 2.
+    output <- case refactoringInfo of
+      -- No refactoring, so go into the children
+      Nothing -> go down'
+      -- A refactoring was applied
+      Just (typ, output, (lb, ub)) -> do
+        (cursor, inp) <- get
+        case typ of
+          Replace -> do
+            -- Get the soure text up to the start of the refactored expr
+            let (pre, inp') = splitBySpan (cursor, lb) inp
+            -- Discard the portion of source text consumed by the refactoring
+            let (_, inp'') = splitBySpan (lb, ub) inp'
+            put (ub, inp'')
+            return (pre <> output)
+          After -> do
+            -- Get the soure text up to the end of the refactored expr
+            let (pre, inp') = splitBySpan (cursor, ub) inp
+            put (ub, inp')
+            return (pre <> output)
+          Before -> do
+            -- Get the soure text up to the start of the refactored expr
+            let (pre, inp') = splitBySpan (cursor, lb) inp
+            -- Cut out the portion of source text consumed by the refactoring
+            let (post, inp'') = splitBySpan (lb, ub) inp'
+            put (ub, inp'')
+            return (pre <> output <> post)
 
-  -- Part 3.
-  -- Enter the right sibling of the current context
-  outputSib <- enterRight reprinting zipper
+    -- Part 3.
+    -- Enter the right sibling of the current context
+    outputSib <- go right
 
-  -- Concat the output for the current context, children, and right sibling
-  return (output <> outputSib)
+    -- Concat the output for the current context, children, and right sibling
+    return (output <> outputSib)
+  where
+    go direction =
+      case direction zipper of
+        -- Go to next node if there is one
+        Just zipper -> enter reprinting zipper
+        -- Otherwise return empty string
+        Nothing -> return mempty
 
--- `enterDown` navigates to the children of the current context
--- TODO -> go f reprinting zipper
-enterDown reprinting zipper =
-  case down' zipper of
-    -- Go to children
-    Just dz -> enter reprinting dz
-    -- No children
-    Nothing -> return mempty
-
--- `enterRight` navigates to the right sibling of the current context
-enterRight reprinting zipper =
-  case right zipper of
-    -- Go to right sibling
-    Just rz -> enter reprinting rz
-    -- No right sibling
-    Nothing -> return mempty
 
 -- | Given a lower-bound and upper-bound pair of Positions, split the
 -- | incoming Source based on the distance between the Position pairs
