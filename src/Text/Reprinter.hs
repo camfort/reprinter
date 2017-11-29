@@ -7,8 +7,11 @@ module Text.Reprinter
   , splitBySpan
   , Position(..)
   , Source
+  , Span
   , Reprinting
   , initPosition
+  , advanceLn
+  , advanceCol
   , catchAll
   , genReprinting
   , Refactorable(..)
@@ -24,16 +27,20 @@ import Data.Monoid ((<>), mempty)
 
 type Source = B.ByteString
 
-newtype Line = Line Int deriving (Data, Enum, Eq, Ord, Show)
+newtype Line = Line Int deriving (Data, Eq, Ord, Show)
 initLine = Line 1
 
-newtype Col = Col Int deriving (Data, Enum, Eq, Ord, Show)
+newtype Col = Col Int deriving (Data, Eq, Ord, Show)
 initCol = Col 1
 
-data Position = Position Line Col deriving (Data, Show)
-initPosition = Position initLine initCol
+type Position = (Line,Col)
+initPosition = (initLine,initCol)
+advanceLn (Line x, _) = (Line (x+1), initCol)
+advanceCol (ln, (Col x)) = (ln, Col (x+1))
+
 
 type Span = (Position, Position)
+-- newtype Span = Span (Position, Position)
 
 type Reprinting m = forall node . Typeable node => node -> m (Maybe (RefactorType, Source, Span))
 
@@ -107,22 +114,23 @@ enter reprinting zipper = do
 -- | Given a lower-bound and upper-bound pair of Positions, split the
 -- | incoming Source based on the distance between the Position pairs
 splitBySpan :: Span -> Source -> (Source, Source)
-splitBySpan (Position lowerLn lowerCol, Position upperLn upperCol) =
-    subtext mempty lowerLn lowerCol
+splitBySpan ((lowerLn, lowerCol), (upperLn, upperCol)) =
+    subtext mempty (lowerLn, lowerCol)
   where
-    subtext acc cursorLn cursorCol input
+    subtext acc cursor@(cursorLn, cursorCol) input
       | cursorLn <= lowerLn && (cursorCol >= lowerCol ==> cursorLn < lowerLn) =
           case B.uncons input of
             Nothing -> done
-            Just ('\n', input') -> subtext acc (succ cursorLn) initCol input'
-            Just (_, input')    -> subtext acc cursorLn (succ cursorCol) input'
+            Just ('\n', input') -> subtext acc (advanceLn cursor) input'
+            Just (_, input')    -> subtext acc (advanceCol cursor) input'
       | cursorLn <= upperLn && (cursorCol >= upperCol ==> cursorLn < upperLn) =
           case B.uncons input of
             Nothing -> done
-            Just ('\n', input') -> subtext (B.cons '\n' acc) (succ cursorLn) initCol input'
-            Just (x, input')    -> subtext (B.cons x acc) cursorLn (succ cursorCol) input'
+            Just ('\n', input') -> subtext (B.cons '\n' acc) (advanceLn cursor) input'
+            Just (x, input')    -> subtext (B.cons x acc) (advanceCol cursor) input'
       | otherwise = done
       where done = (B.reverse acc, input)
+
 
 -- Logical implication operator.
 (==>) :: Bool -> Bool -> Bool
