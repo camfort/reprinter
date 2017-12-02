@@ -1,16 +1,19 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Text.Reprinter
-  ( reprint
+  (
+  -- * The
+    reprint
   , splitBySpan
-  , Position(..)
+  , mkLine
+  , mkCol
   , Source
+  , Position
   , Span
   , Reprinting
   , initPosition
-  , advanceLn
+  , advanceLine
   , advanceCol
   , catchAll
   , genReprinting
@@ -20,27 +23,47 @@ module Text.Reprinter
 
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.State.Lazy
-import qualified Data.ByteString.Char8 as B
+import qualified Data.Text.Lazy as Text
 import Data.Data
 import Data.Generics.Zipper
 import Data.Monoid ((<>), mempty)
 
-type Source = B.ByteString
+
+type Source = Text.Text
 
 newtype Line = Line Int deriving (Data, Eq, Ord, Show)
+
+initLine :: Line
 initLine = Line 1
 
+mkLine :: Int -> Line
+mkLine l
+  | l < 1 = error $ "mkLine: called with: " <> show l <> ". Minimum is 1."
+  | otherwise = Line  l
+
 newtype Col = Col Int deriving (Data, Eq, Ord, Show)
+
+initCol :: Col
 initCol = Col 1
 
+mkCol :: Int -> Col
+mkCol l
+  | l < 1 = error $ "mkCol: called with: " <> show l <> ". Minimum is 1."
+  | otherwise = Col  l
+
 type Position = (Line,Col)
+
+initPosition :: Position
 initPosition = (initLine,initCol)
-advanceLn (Line x, _) = (Line (x+1), initCol)
-advanceCol (ln, (Col x)) = (ln, Col (x+1))
+
+advanceLine :: Position -> Position
+advanceLine (Line x, _) = (Line (x+1), initCol)
+
+advanceCol :: Position -> Position
+advanceCol (ln, Col x) = (ln, Col (x+1))
 
 
 type Span = (Position, Position)
--- newtype Span = Span (Position, Position)
 
 type Reprinting m = forall node . Typeable node => node -> m (Maybe (RefactorType, Source, Span))
 
@@ -52,7 +75,7 @@ data RefactorType = Before | After | Replace
 -- | into a monadic Source transformer.
 reprint :: (Monad m, Data ast) => Reprinting m -> ast -> Source -> m Source
 reprint reprinting ast input
-  | B.null input = return mempty
+  | Text.null input = return mempty
   | otherwise = do
     -- Initial state comprises start cursor and input source
     let state0 = (initPosition, input)
@@ -62,53 +85,53 @@ reprint reprinting ast input
     return (out <> remaining)
 
 -- | Take a refactoring and a zipper producing a stateful Source transformer with Position state.
-enter :: Monad m => Reprinting m -> Zipper a -> StateT (Position, Source) m Source
+enter :: Monad m => Reprinting m -> Zipper ast -> StateT (Position, Source) m Source
 enter reprinting zipper = do
-    -- Step 1.
-    -- Apply a refactoring
+    -- Step 1: Apply a refactoring
     refactoringInfo <- lift (query reprinting zipper)
 
-    -- Step 2.
+    -- Step 2: Deal with refactored code or go to children
     output <- case refactoringInfo of
-      -- No refactoring, so go into the children
+      -- No refactoring; go to children
       Nothing -> go down'
       -- A refactoring was applied
       Just (typ, output, (lb, ub)) -> do
         (cursor, inp) <- get
         case typ of
           Replace -> do
-            -- Get the soure text up to the start of the refactored expr
+            -- Get soure up to start of refactored node
             let (pre, inp') = splitBySpan (cursor, lb) inp
-            -- Discard the portion of source text consumed by the refactoring
+            -- Remove source covered by refactoring
             let (_, inp'') = splitBySpan (lb, ub) inp'
             put (ub, inp'')
             return (pre <> output)
           After -> do
-            -- Get the soure text up to the end of the refactored expr
+            -- Get source up to end of the refactored node
             let (pre, inp') = splitBySpan (cursor, ub) inp
             put (ub, inp')
             return (pre <> output)
           Before -> do
-            -- Get the soure text up to the start of the refactored expr
+            -- Get source up to start of refactored node
             let (pre, inp') = splitBySpan (cursor, lb) inp
-            -- Cut out the portion of source text consumed by the refactoring
+            -- Discard portion consumed by the refactoring
             let (post, inp'') = splitBySpan (lb, ub) inp'
             put (ub, inp'')
             return (pre <> output <> post)
 
-    -- Part 3.
-    -- Enter the right sibling of the current context
+    -- Step 3: Enter the right sibling of the current context
     outputSib <- go right
 
-    -- Concat the output for the current context, children, and right sibling
+    -- Finally append output of current context/children
+    -- and right sibling
     return (output <> outputSib)
+
   where
     go direction =
-      case direction zipper of
-        -- Go to next node if there is one
-        Just zipper -> enter reprinting zipper
-        -- Otherwise return empty string
-        Nothing -> return mempty
+        case direction zipper of
+          -- Go to next node if there is one
+          Just zipper -> enter reprinting zipper
+          -- Otherwise return the empty string
+          Nothing -> return mempty
 
 
 -- | Given a lower-bound and upper-bound pair of Positions, split the
@@ -119,17 +142,17 @@ splitBySpan ((lowerLn, lowerCol), (upperLn, upperCol)) =
   where
     subtext acc cursor@(cursorLn, cursorCol) input
       | cursorLn <= lowerLn && (cursorCol >= lowerCol ==> cursorLn < lowerLn) =
-          case B.uncons input of
+          case Text.uncons input of
             Nothing -> done
-            Just ('\n', input') -> subtext acc (advanceLn cursor) input'
+            Just ('\n', input') -> subtext acc (advanceLine cursor) input'
             Just (_, input')    -> subtext acc (advanceCol cursor) input'
       | cursorLn <= upperLn && (cursorCol >= upperCol ==> cursorLn < upperLn) =
-          case B.uncons input of
+          case Text.uncons input of
             Nothing -> done
-            Just ('\n', input') -> subtext (B.cons '\n' acc) (advanceLn cursor) input'
-            Just (x, input')    -> subtext (B.cons x acc) (advanceCol cursor) input'
+            Just ('\n', input') -> subtext (Text.cons '\n' acc) (advanceLine cursor) input'
+            Just (x, input')    -> subtext (Text.cons x acc) (advanceCol cursor) input'
       | otherwise = done
-      where done = (B.reverse acc, input)
+      where done = (Text.reverse acc, input)
 
 
 -- Logical implication operator.
@@ -146,10 +169,8 @@ class Refactorable t where
 
 -- | Essentially wraps the refactorable interface
 genReprinting :: (Monad m, Refactorable t, Typeable t)
-    => (t -> m Source)
-    -> t -> m (Maybe (RefactorType, Source, Span))
-genReprinting f z = do
-  case isRefactored z of
+              => (t -> m Source) -> t -> m (Maybe (RefactorType, Source, Span))
+genReprinting f z = case isRefactored z of
     Nothing -> return Nothing
     Just refactorType -> do
       output <- f z
