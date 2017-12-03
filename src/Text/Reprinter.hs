@@ -55,7 +55,7 @@ initCol = Col 1
 mkCol :: Int -> Either String Col
 mkCol l
   | l < 1 = Left $ "mkCol: called with: " <> show l <> ". Minimum is 1."
-  | otherwise = Rigth (Col  l)
+  | otherwise = Right (Col  l)
 
 -- | A position in a text (imagine a cursor)
 type Position = (Line,Col)

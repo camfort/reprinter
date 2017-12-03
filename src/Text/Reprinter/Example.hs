@@ -42,7 +42,7 @@ input = "x = +(1,2)\n\
 -- We then run this through a parser to get an AST, transform the AST,
 -- and run this through the reprinter to get:
 
-output = putStrLn . Text.unpack . refactor $ exampleSource
+output = putStrLn . Text.unpack . refactor $ input
 
 refactor :: Source -> Source
 refactor input = runIdentity
@@ -86,6 +86,8 @@ prettyExpr (Const _ _ n)    = Text.pack $ show n
 refactorZero :: AST -> AST
 refactorZero = refactorLoop refactorZeroOnce
 
+-- Note that we mark refactored nodes with True in their annotation and the source
+-- span of the original node
 refactorZeroOnce :: AST -> AST
 refactorZeroOnce = map (\(Decl s n e) -> (Decl s n (go e)))
   where
@@ -98,13 +100,14 @@ refactorZeroOnce = map (\(Decl s n e) -> (Decl s n (go e)))
     markRefactored (Var _ _ n) s      = Var True s n
     markRefactored (Const _ _ i) s    = Const True s i
 
+-- Apply the refactoring in a loop until all zeroes are eliminated, this successfully
+-- deals with +(0, 0) subexpressions
 refactorLoop :: (AST -> AST) -> AST -> AST
 refactorLoop refactoring ast = if refactoring ast == ast
     then ast
     else refactorLoop refactoring (refactoring ast)
 
--- Note that we mark refactored nodes with True in their annotation and the source
--- span of the original node
+
 
 eval :: Expr -> State [(String, Int)] (Maybe Int)
 eval (Plus _ _ e1 e2) = do
@@ -135,7 +138,7 @@ refactor2 input =
   .  parse
   ) input
 
-output2 = (putStrLn . Text.unpack . refactor2) exampleSource
+output2 = (putStrLn . Text.unpack . refactor2) input
 
 
 
