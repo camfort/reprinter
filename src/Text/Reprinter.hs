@@ -28,43 +28,54 @@ import Data.Data
 import Data.Generics.Zipper
 import Data.Monoid ((<>), mempty)
 
-
+-- | Text from source file
 type Source = Text.Text
 
+-- | A line within the source text
 newtype Line = Line Int deriving (Data, Eq, Ord, Show)
 
+-- | Lines start at 1
 initLine :: Line
 initLine = Line 1
 
+-- | Smart constructor for a Line, checks that line >= 1
 mkLine :: Int -> Line
 mkLine l
   | l < 1 = error $ "mkLine: called with: " <> show l <> ". Minimum is 1."
   | otherwise = Line  l
 
+-- | A column within the source text
 newtype Col = Col Int deriving (Data, Eq, Ord, Show)
 
+-- | Columns start at 1
 initCol :: Col
 initCol = Col 1
 
+-- | Smart constructor for a Col, checks that column >= 1
 mkCol :: Int -> Col
 mkCol l
   | l < 1 = error $ "mkCol: called with: " <> show l <> ". Minimum is 1."
   | otherwise = Col  l
 
+-- | A position in a text (imagine a cursor)
 type Position = (Line,Col)
 
+-- | The initial position
 initPosition :: Position
 initPosition = (initLine,initCol)
 
+-- | Given a position, go down a line, going back to the initial column
 advanceLine :: Position -> Position
 advanceLine (Line x, _) = (Line (x+1), initCol)
 
+-- | Given a position, advance by one column
 advanceCol :: Position -> Position
 advanceCol (ln, Col x) = (ln, Col (x+1))
 
-
+-- | Two positions give the lower and upper bounds of a source span
 type Span = (Position, Position)
 
+-- | Type of a reprinting function
 type Reprinting m = forall node . Typeable node => node -> m (Maybe (RefactorType, Source, Span))
 
 -- | Specify a refactoring type
@@ -138,8 +149,8 @@ enter reprinting zipper = do
           Nothing -> return mempty
 
 
--- | Given a lower-bound and upper-bound pair of Positions, split the
--- | incoming Source based on the distance between the Position pairs
+-- Given a lower-bound and upper-bound pair of Positions, split the
+-- incoming Source based on the distance between the Position pairs
 splitBySpan :: Span -> Source -> (Source, Source)
 splitBySpan ((lowerLn, lowerCol), (upperLn, upperCol)) =
     subtext mempty (lowerLn, lowerCol)
