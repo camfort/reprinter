@@ -1,5 +1,5 @@
 name: reprinter
-version: '0.1.0.0'
+version: '0.2.0.0'
 synopsis: Scrap Your Reprinter
 description: A datatype generic algorithm for layout-preserving refactoring
 category: Text

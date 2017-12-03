@@ -39,10 +39,10 @@ initLine :: Line
 initLine = Line 1
 
 -- | Smart constructor for a Line, checks that line >= 1
-mkLine :: Int -> Line
+mkLine :: Int -> Either String Line
 mkLine l
-  | l < 1 = error $ "mkLine: called with: " <> show l <> ". Minimum is 1."
-  | otherwise = Line  l
+  | l < 1 = Left $ "mkLine: called with: " <> show l <> ". Minimum is 1."
+  | otherwise = Right (Line  l)
 
 -- | A column within the source text
 newtype Col = Col Int deriving (Data, Eq, Ord, Show)
@@ -52,10 +52,10 @@ initCol :: Col
 initCol = Col 1
 
 -- | Smart constructor for a Col, checks that column >= 1
-mkCol :: Int -> Col
+mkCol :: Int -> Either String Col
 mkCol l
-  | l < 1 = error $ "mkCol: called with: " <> show l <> ". Minimum is 1."
-  | otherwise = Col  l
+  | l < 1 = Left $ "mkCol: called with: " <> show l <> ". Minimum is 1."
+  | otherwise = Rigth (Col  l)
 
 -- | A position in a text (imagine a cursor)
 type Position = (Line,Col)

@@ -31,22 +31,18 @@ data Expr =
   deriving (Data, Eq, Typeable)
 
 
-main = tryMe
+main = output
 
-exampleSource = "x = +(1,2)\n\
-                \y  =  +(x,0)\n\
-                \// Calculate z\n\
-                \z  =  +( 1,  +(+(0,x)  ,y) )\n"
+input = "x = +(1,2)\n\
+        \y  =  +(x,0)\n\
+        \// Calculate z\n\
+        \z  =  +( 1,  +(+(0,x)  ,y) )\n"
 
-exampleSource2 = "x    =  +(10,2)\n\
-                 \y    =  +(x ,0)\n\
-                 \// Calculate z\n\
-                 \res  =    +( x  ,  +(+(0,0)  ,y) )\n"
 
 -- We then run this through a parser to get an AST, transform the AST,
 -- and run this through the reprinter to get:
 
-tryMe = putStrLn . Text.unpack . refactor $ exampleSource2
+output = putStrLn . Text.unpack . refactor $ exampleSource
 
 refactor :: Source -> Source
 refactor input = runIdentity
@@ -91,8 +87,7 @@ refactorZero :: AST -> AST
 refactorZero = refactorLoop refactorZeroOnce
 
 refactorZeroOnce :: AST -> AST
-refactorZeroOnce =
-  map (\(Decl s n e) -> (Decl s n (go e)))
+refactorZeroOnce = map (\(Decl s n e) -> (Decl s n (go e)))
   where
     go (Plus _ s e (Const _ _ 0)) = markRefactored (go e) s
     go (Plus _ s (Const _ _ 0) e) = markRefactored (go e) s
