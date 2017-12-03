@@ -3,18 +3,18 @@
 
 module Text.Reprinter
   (
-  -- * The
     reprint
-  , splitBySpan
-  , mkLine
-  , mkCol
   , Source
   , Position
-  , Span
-  , Reprinting
   , initPosition
+  , initLine
+  , initCol
+  , mkLine
+  , mkCol
   , advanceLine
   , advanceCol
+  , Span
+  , Reprinting
   , catchAll
   , genReprinting
   , Refactorable(..)
@@ -75,13 +75,17 @@ data RefactorType = Before | After | Replace
 -- | into a monadic Source transformer.
 reprint :: (Monad m, Data ast) => Reprinting m -> ast -> Source -> m Source
 reprint reprinting ast input
+  -- If the input is empty return empty
   | Text.null input = return mempty
+
+  -- Otherwise proceed with the algorithm
   | otherwise = do
     -- Initial state comprises start cursor and input source
-    let state0 = (initPosition, input)
-    -- Enter the top-node of a zipper for 'tree'
-    (out, (_, remaining)) <- runStateT (enter reprinting (toZipper ast)) state0
-    -- Add to the output source the reamining input source
+    let state_0 = (initPosition, input)
+    -- Enter the top-node of a zipper for `ast'
+    let comp = enter reprinting (toZipper ast)
+    (out, (_, remaining)) <- runStateT comp state_0
+    -- Add to the output source the remaining input source
     return (out <> remaining)
 
 -- | Take a refactoring and a zipper producing a stateful Source transformer with Position state.

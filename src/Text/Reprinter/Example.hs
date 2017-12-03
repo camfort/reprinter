@@ -19,22 +19,16 @@ import Text.Reprinter
 
 -- Here is the AST for the language
 
+type AST = [Decl]
 
-data AST a =
-     Seq a (Decl a) (AST a)
-  |  Nil a
-  deriving (Data, Typeable)
+data Decl = Decl Span String Expr
+  deriving (Data, Eq, Typeable)
 
-data Decl a =
-    Decl a Span String (Expr a)
-  deriving (Data, Typeable)
-
-data Expr a =
-     Plus a Span (Expr a) (Expr a)
-  |  Var a Span String
-  |  Const a Span Int
-  deriving (Data, Typeable)
-
+data Expr =
+     Plus Bool Span Expr Expr
+  |  Var Bool Span String
+  |  Const Bool Span Int
+  deriving (Data, Eq, Typeable)
 
 
 main = tryMe
@@ -44,10 +38,15 @@ exampleSource = "x = +(1,2)\n\
                 \// Calculate z\n\
                 \z  =  +( 1,  +(+(0,x)  ,y) )\n"
 
+exampleSource2 = "x    =  +(10,2)\n\
+                 \y    =  +(x ,0)\n\
+                 \// Calculate z\n\
+                 \res  =    +( x  ,  +(+(0,0)  ,y) )\n"
+
 -- We then run this through a parser to get an AST, transform the AST,
 -- and run this through the reprinter to get:
 
-tryMe = putStrLn . Text.unpack . refactor $ exampleSource
+tryMe = putStrLn . Text.unpack . refactor $ exampleSource2
 
 refactor :: Source -> Source
 refactor input = runIdentity
@@ -63,11 +62,11 @@ y  =  x
 // Calculate z
 z  =  +( 1,  +(x ,y) )
 -}
-instance Refactorable (Expr Bool) where
+instance Refactorable Expr where
   isRefactored (Plus True _ _ _)  = Just Replace
   isRefactored (Var True _ _)     = Just Replace
   isRefactored (Const True _ _)   = Just Replace
-  isRefactored _                  = Nothing
+  isRefactored _               = Nothing
 
   getSpan (Plus _ s _ _)  = s
   getSpan (Var _ s _)     = s
@@ -76,10 +75,10 @@ instance Refactorable (Expr Bool) where
 exprReprinter :: Reprinting Identity
 exprReprinter = catchAll `extQ` reprintExpr
   where   reprintExpr x =
-            genReprinting  (return . prettyExpr) (x :: Expr Bool)
+            genReprinting  (return . prettyExpr) (x :: Expr)
 
 -- Expressions can be pretty-printed as
-prettyExpr :: Expr a -> Source
+prettyExpr :: Expr -> Source
 prettyExpr (Plus _ _ e1 e2) = "+(" <> prettyExpr e1 <> ", " <> prettyExpr e2 <> ")"
 prettyExpr (Var _ _ n)      = Text.pack n
 prettyExpr (Const _ _ n)    = Text.pack $ show n
@@ -87,23 +86,67 @@ prettyExpr (Const _ _ n)    = Text.pack $ show n
 -- Note we are *not* defining a pretty printer for declarations
 -- as we are never going to need to regenerate these
 
--- Here is a simple AST transformer for replace +(e, 0) with e and +(0, e) with e
-refactorZero :: AST Bool -> AST Bool
-refactorZero (Nil a) = Nil a
-refactorZero (Seq a (Decl a' s n e) d) =
-    Seq a (Decl a' s n (refactorExpr e)) (refactorZero d)
+-- Here is a simple AST transformer for replacing both +(e, 0) and +(0, e) with e
+refactorZero :: AST -> AST
+refactorZero = refactorLoop refactorZeroOnce
+
+refactorZeroOnce :: AST -> AST
+refactorZeroOnce =
+  map (\(Decl s n e) -> (Decl s n (go e)))
   where
-    refactorExpr (Plus a s e (Const _ _ 0)) = markRefactored (refactorExpr e) s
-    refactorExpr (Plus a s (Const _ _ 0) e) = markRefactored (refactorExpr e) s
-    refactorExpr (Plus a s e1 e2) = Plus a s (refactorExpr e1) (refactorExpr e2)
-    refactorExpr e = e
+    go (Plus _ s e (Const _ _ 0)) = markRefactored (go e) s
+    go (Plus _ s (Const _ _ 0) e) = markRefactored (go e) s
+    go (Plus b s e1 e2) = Plus b s (go e1) (go e2)
+    go e = e
 
     markRefactored (Plus _ _ e1 e2) s = Plus True s e1 e2
     markRefactored (Var _ _ n) s      = Var True s n
     markRefactored (Const _ _ i) s    = Const True s i
 
+refactorLoop :: (AST -> AST) -> AST -> AST
+refactorLoop refactoring ast = if refactoring ast == ast
+    then ast
+    else refactorLoop refactoring (refactoring ast)
+
 -- Note that we mark refactored nodes with True in their annotation and the source
 -- span of the original node
+
+eval :: Expr -> State [(String, Int)] (Maybe Int)
+eval (Plus _ _ e1 e2) = do
+  e1 <- eval e1
+  e2 <- eval e2
+  return ((+) <$> e1 <*> e2)
+eval (Const _ _ i) = (return . Just) i
+eval (Var _ _ s) = do
+  l <- get
+  return (lookup s l)
+
+commentPrinter :: Reprinting (State [(String, Int)])
+commentPrinter = catchAll `extQ` decl
+  where
+  decl (Decl s v e) = do
+    val <- eval (e :: Expr)
+    case val of
+      Nothing -> return Nothing
+      Just val -> do
+        modify ((v,val) :)
+        let msg = " // " ++ v ++ " = " ++ show val
+        return (Just (After, Text.pack msg, s))
+
+refactor2 :: Source -> Source
+refactor2 input =
+  (  flip evalState []
+  .  flip (reprint commentPrinter) input
+  .  parse
+  ) input
+
+output2 = (putStrLn . Text.unpack . refactor2) exampleSource
+
+
+
+
+
+
 
 -- The rest is a simple monadic parser for the language.
 -- The parser inserts span information into the tree, i.e,
@@ -111,16 +154,16 @@ refactorZero (Seq a (Decl a' s n e) d) =
 -- this is needed for reprint algorithm and its shape
 -- satisfies the WELL-FORMEDNESS-CONDITION for ASTs representing source text
 
-parse :: Source -> AST Bool
+parse :: Source -> AST
 parse s = evalState parseDecl (Text.unpack s, initPosition)
 
 type Parser = State (String, Position)
 
-parseDecl :: Parser (AST Bool)
+parseDecl :: Parser AST
 parseDecl = do
    (xs, p1) <- get
    case xs of
-       [] -> return $ Nil False
+       [] -> return []
        ('\n':xs) -> do
          put (xs, advanceLine p1)
          parseDecl
@@ -140,7 +183,7 @@ parseDecl = do
              (xs, p') <- get
              put (xs, advanceLine p')
              rest <- parseDecl
-             return $ Seq False (Decl False (p1, p2) name expr) rest
+             return $ (Decl (p1, p2) name expr) : rest
 
 commentPrefix :: String -> Maybe (String, String)
 commentPrefix [] = Nothing
@@ -148,7 +191,7 @@ commentPrefix (' ':xs) = commentPrefix xs
 commentPrefix ('/':'/':xs) = Just $ break (== '\n') xs
 commentPrefix _ = Nothing
 
-parseExpr :: Parser (Expr Bool)
+parseExpr :: Parser Expr
 parseExpr = do
     p1 <- getPos
     isPlus <- charP '+'
