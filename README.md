@@ -1,4 +1,4 @@
-Scrap Your Reprinter - A Datatype Generic Algorithm for Layout-Preserving Refactoring
+# Scrap Your Reprinter - A Datatype Generic Algorithm for Layout-Preserving Refactoring
 
 Refactoring tools are extremely useful in software development:
 they provide automatic source code transformation tools for a variety
