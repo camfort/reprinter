@@ -21,12 +21,14 @@ module Text.Reprinter
   , RefactorType(..)
   ) where
 
+import Control.Monad (forM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.State.Lazy
 import qualified Data.Text.Lazy as Text
 import Data.Data
 import Data.Generics.Zipper
 import Data.Monoid ((<>), mempty)
+import Data.List (sortBy)
 
 -- | Text from source file
 type Source = Text.Text
@@ -75,6 +77,8 @@ advanceCol (ln, Col x) = (ln, Col (x+1))
 -- | Two positions give the lower and upper bounds of a source span
 type Span = (Position, Position)
 
+
+
 -- | Type of a reprinting function
 type Reprinting m = forall node . Typeable node => node -> m (Maybe (RefactorType, Source, Span))
 
@@ -94,59 +98,70 @@ reprint reprinting ast input
     -- Initial state comprises start cursor and input source
     let state_0 = (initPosition, input)
     -- Enter the top-node of a zipper for `ast'
-    let comp = enter reprinting (toZipper ast)
+    refactorings <- enter reprinting (toZipper ast) []
+    let comp = process . sort' $ refactorings
     (out, (_, remaining)) <- runStateT comp state_0
     -- Add to the output source the remaining input source
     return (out <> remaining)
 
+
 -- | Take a refactoring and a zipper producing a stateful Source transformer with Position state.
-enter :: Monad m => Reprinting m -> Zipper ast -> StateT (Position, Source) m Source
-enter reprinting zipper = do
+enter :: Monad m => Reprinting m -> Zipper ast -> [(RefactorType, Source, Span)]
+      -> m [(RefactorType, Source, Span)]
+enter reprinting zipper acc = do
     -- Step 1: Apply a refactoring
-    refactoringInfo <- lift (query reprinting zipper)
+    refactoringInfo <- query reprinting zipper
 
     -- Step 2: Deal with refactored code or go to children
-    output <- case refactoringInfo of
+    acc <- case refactoringInfo of
       -- No refactoring; go to children
-      Nothing -> go down'
+      Nothing -> go down' acc
       -- A refactoring was applied
-      Just (typ, output, (lb, ub)) -> do
-        (cursor, inp) <- get
-        case typ of
-          Replace -> do
-            -- Get soure up to start of refactored node
-            let (pre, inp') = splitBySpan (cursor, lb) inp
-            -- Remove source covered by refactoring
-            let (_, inp'') = splitBySpan (lb, ub) inp'
-            put (ub, inp'')
-            return (pre <> output)
-          After -> do
-            -- Get source up to end of the refactored node
-            let (pre, inp') = splitBySpan (cursor, ub) inp
-            put (ub, inp')
-            return (pre <> output)
-          Before -> do
-            -- Get source up to start of refactored node
-            let (pre, inp') = splitBySpan (cursor, lb) inp
-            -- Discard portion consumed by the refactoring
-            let (post, inp'') = splitBySpan (lb, ub) inp'
-            put (ub, inp'')
-            return (pre <> output <> post)
+      Just r -> return (r : acc)
 
     -- Step 3: Enter the right sibling of the current context
-    outputSib <- go right
+    acc <- go right acc
 
     -- Finally append output of current context/children
     -- and right sibling
-    return (output <> outputSib)
+    return acc
 
   where
-    go direction =
+    go direction acc =
         case direction zipper of
           -- Go to next node if there is one
-          Just zipper -> enter reprinting zipper
+          Just zipper -> enter reprinting zipper acc
           -- Otherwise return the empty string
-          Nothing -> return mempty
+          Nothing -> return acc
+
+sort' = sortBy (\(_,_,(lb,_)) (_,_,(lb',_)) -> compare lb lb')
+
+process :: Monad m => [(RefactorType, Source, Span)] -> StateT (Position, Source) m Source
+process refactorings = do
+  srcs <- forM refactorings $ \(typ, output, (lb, ub)) -> do
+    (cursor, inp) <- get
+    case typ of
+      Replace -> do
+        -- Get soure up to start of refactored node
+        let (pre, inp') = splitBySpan (cursor, lb) inp
+        -- Remove source covered by refactoring
+        let (_, inp'') = splitBySpan (lb, ub) inp'
+        put (ub, inp'')
+        return (pre <> output)
+      After -> do
+        -- Get source up to end of the refactored node
+        let (pre, inp') = splitBySpan (cursor, ub) inp
+        put (ub, inp')
+        return (pre <> output)
+      Before -> do
+        -- Get source up to start of refactored node
+        let (pre, inp') = splitBySpan (cursor, lb) inp
+        -- Discard portion consumed by the refactoring
+        let (post, inp'') = splitBySpan (lb, ub) inp'
+        put (ub, inp'')
+        return (pre <> output <> post)
+  return $ Text.concat srcs
+
 
 
 -- Given a lower-bound and upper-bound pair of Positions, split the

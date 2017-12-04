@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Text.Reprinter.Example where
+module Text.Reprinter.ExampleTernary where
 
 import Control.Monad.State
 import qualified Data.Text.Lazy as Text
@@ -22,34 +22,39 @@ import Text.Reprinter
 type AST = [Decl]
 
 data Decl = Decl Span String Expr
-  deriving (Data, Eq, Typeable)
+  deriving (Data, Show, Typeable)
 
 data Expr =
-     Plus Bool Span Expr Expr
-  |  Var Bool Span String
-  |  Const Bool Span Int
-  deriving (Data, Eq, Typeable)
+    App Bool Span Op Expr Expr
+  | Var Bool Span String
+  | Const Bool Span Int
+  deriving (Data, Show, Typeable)
 
+data Op = Add Bool Span deriving (Data, Show, Typeable)
 
-main = output
+main = go ex1
 
-input = "x = +(1,2)\n\
-        \y  =  +(x,0)\n\
-        \// Calculate z\n\
-        \z  =  +( 1,  +(+(0,x)  ,y) )\n"
+ex1 = "y = 1   +       x + 0\n" :: Source
+-- "y = 1   +       x"
 
-input_triv = "x = +(1,0)\n"
+ex2 = "y = 1   +       0    + x\n" :: Source
+-- "y = 1   +       x"
 
+ex3 = "y = 0   +       0    + x\n" :: Source
+-- "y = x"
+
+ex4 = "y = 1   +       0    + x+w\n" :: Source
+--    "y = 1   +       x + w"
 
 -- We then run this through a parser to get an AST, transform the AST,
 -- and run this through the reprinter to get:
 
-output = putStrLn . Text.unpack . refactor $ input
+go src = putStrLn . Text.unpack . refactor $ src
 
 refactor :: Source -> Source
 refactor input = runIdentity
                . (\ast -> reprint exprReprinter ast input)
-               . refactorZero
+               . refactorTouch
                . parse  $ input
 
 {- This achieves the desired effect:
@@ -61,88 +66,77 @@ y  =  x
 z  =  +( 1,  +(x ,y) )
 -}
 instance Refactorable Expr where
-  isRefactored (Plus True _ _ _)  = Just Replace
+  isRefactored (App True _ _ _ _)  = Just Replace
   isRefactored (Var True _ _)     = Just Replace
   isRefactored (Const True _ _)   = Just Replace
   isRefactored _               = Nothing
 
-  getSpan (Plus _ s _ _)  = s
+  getSpan (App _ s _ _ _)  = s
   getSpan (Var _ s _)     = s
   getSpan (Const _ s _)   = s
 
 exprReprinter :: Reprinting Identity
 exprReprinter = catchAll `extQ` reprintExpr
   where   reprintExpr x =
-            genReprinting  (return . prettyExpr) (x :: Expr)
+            genReprinting  (return . Text.pack . pretty) (x :: Expr)
+
+class Pretty a where
+  pretty :: a -> String
 
 -- Expressions can be pretty-printed as
-prettyExpr :: Expr -> Source
-prettyExpr (Plus _ _ e1 e2) = "+(" <> prettyExpr e1 <> ", " <> prettyExpr e2 <> ")"
-prettyExpr (Var _ _ n)      = Text.pack n
-prettyExpr (Const _ _ n)    = Text.pack $ show n
+instance Pretty Expr where
+    -- pretty (App _ _ op e1 e2) = pretty e1 <> pretty op <> pretty e2
+    pretty (Var _ _ n)      = n
+    pretty (Const _ _ n)    = show n
+
+instance Pretty Op where
+    pretty (Add _ _) = " `add` "
 
 -- Note we are *not* defining a pretty printer for declarations
 -- as we are never going to need to regenerate these
+--
+-- -- Here is a simple AST transformer for replacing both +(e, 0) and +(0, e) with e
+-- refactorZero :: AST -> AST
+-- refactorZero = refactorLoop refactorZeroOnce
+--
+-- -- Note that we mark refactored nodes with True in their annotation and the source
+-- -- span of the original node
+-- refactorZero :: AST -> AST
+-- refactorZero = map (\(Decl s n e) -> (Decl s n (go e)))
+--   where
+--     go (App _ s (Add _ _) e (Const _ _ 0)) = markRefactored (go e) s
+--     go (App _ s (Add _ _) (Const _ _ 0) e) = markRefactored (go e) s
+--     go (App b s op e1 e2) = App b s op (go e1) (go e2)
+--     go e = e
+--
+--     markRefactored (App _ _ op e1 e2) s = App True s op e1 e2
+--     markRefactored (Var _ _ n) s      = Var True s n
+--     markRefactored (Const _ _ i) s    = Const True s i
+--
+-- -- Apply the refactoring in a loop until all zeroes are eliminated, this successfully
+-- -- deals with +(0, 0) subexpressions
+-- refactorLoop :: (AST -> AST) -> AST -> AST
+-- refactorLoop refactoring ast = if refactoring ast == ast
+--     then ast
+--     else refactorLoop refactoring (refactoring ast)
 
--- Here is a simple AST transformer for replacing both +(e, 0) and +(0, e) with e
-refactorZero :: AST -> AST
-refactorZero = refactorLoop refactorZeroOnce
-
--- Note that we mark refactored nodes with True in their annotation and the source
--- span of the original node
-refactorZeroOnce :: AST -> AST
-refactorZeroOnce = map (\(Decl s n e) -> (Decl s n (go e)))
+refactorTouch :: AST -> AST
+refactorTouch = map (\(Decl s n e) -> (Decl s n (go e)))
   where
-    go (Plus _ s e (Const _ _ 0)) = markRefactored (go e) s
-    go (Plus _ s (Const _ _ 0) e) = markRefactored (go e) s
-    go (Plus b s e1 e2) = Plus b s (go e1) (go e2)
+    go (App r s (Add _ s') e1 e2) = App r s (Add True s') (go e1) (go e2)
+    go (Var r s n) = Var True s n
+    go (Const r s v) = Const True s v
     go e = e
 
-    markRefactored (Plus _ _ e1 e2) s = Plus True s e1 e2
-    markRefactored (Var _ _ n) s      = Var True s n
-    markRefactored (Const _ _ i) s    = Const True s i
-
--- Apply the refactoring in a loop until all zeroes are eliminated, this successfully
--- deals with +(0, 0) subexpressions
-refactorLoop :: (AST -> AST) -> AST -> AST
-refactorLoop refactoring ast = if refactoring ast == ast
-    then ast
-    else refactorLoop refactoring (refactoring ast)
-
-
-
-eval :: Expr -> State [(String, Int)] (Maybe Int)
-eval (Plus _ _ e1 e2) = do
-  e1 <- eval e1
-  e2 <- eval e2
-  return ((+) <$> e1 <*> e2)
-eval (Const _ _ i) = (return . Just) i
-eval (Var _ _ s) = do
-  l <- get
-  return (lookup s l)
-
-commentPrinter :: Reprinting (State [(String, Int)])
-commentPrinter = catchAll `extQ` decl
-  where
-  decl (Decl s v e) = do
-    val <- eval (e :: Expr)
-    case val of
-      Nothing -> return Nothing
-      Just val -> do
-        modify ((v,val) :)
-        let msg = " // " ++ v ++ " = " ++ show val
-        return (Just (After, Text.pack msg, s))
-
-refactor2 :: Source -> Source
-refactor2 input =
-  (  flip evalState []
-  .  flip (reprint commentPrinter) input
-  .  parse
-  ) input
-
-output2 = (putStrLn . Text.unpack . refactor2) input
-
-
+-- eval :: Expr -> State [(String, Int)] (Maybe Int)
+-- eval (Plus _ _ e1 e2) = do
+--   e1 <- eval e1
+--   e2 <- eval e2
+--   return ((+) <$> e1 <*> e2)
+-- eval (Const _ _ i) = (return . Just) i
+-- eval (Var _ _ s) = do
+--   l <- get
+--   return (lookup s l)
 
 
 
@@ -194,29 +188,32 @@ commentPrefix _ = Nothing
 parseExpr :: Parser Expr
 parseExpr = do
     p1 <- getPos
-    isPlus <- charP '+'
-    if isPlus then do
-      char '('
-      spaces
-      n <- parseExpr
-      spaces
-      charP ','
-      spaces
-      m <- parseExpr
-      spaces
-      char ')'
+    isVar <- peekChar isAlpha
+    if isVar then do
+      name <- many isAlpha
       p2 <- getPos
-      return $ Plus False (p1, p2) n m
+      continueExpr (Var False (p1, p2) name)
     else do
-       isVar <- peekChar isAlpha
-       if isVar then do
-           name <- many isAlpha
-           p2 <- getPos
-           return $ Var False (p1, p2) name
-       else do
-           num <- many isDigit
-           p2 <- getPos
-           return $ Const False (p1, p2) $ read num
+      num <- many isDigit
+      p2 <- getPos
+      continueExpr (Const False (p1, p2) $ read num)
+
+continueExpr :: Expr -> Parser Expr
+continueExpr expr = do
+  spaces
+  p1 <- getPos
+  isPlus <- charP '+'
+  if isPlus then do
+    p2 <- getPos
+    spaces
+    expr' <- parseExpr
+    let (_,ub) = getSpan expr'
+    let (lb,_) = getSpan expr
+    return $ App False (lb,ub) (Add False (p1,p2)) expr expr'
+  else return expr
+
+
+
 
 -- Some monadic parser helpers (standard)
 
