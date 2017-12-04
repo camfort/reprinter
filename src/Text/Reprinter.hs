@@ -28,7 +28,7 @@ import qualified Data.Text.Lazy as Text
 import Data.Data
 import Data.Generics.Zipper
 import Data.Monoid ((<>), mempty)
-import Data.List (sortBy)
+import Data.List (sortOn)
 
 -- | Text from source file
 type Source = Text.Text
@@ -77,13 +77,12 @@ advanceCol (ln, Col x) = (ln, Col (x+1))
 -- | Two positions give the lower and upper bounds of a source span
 type Span = (Position, Position)
 
-
-
 -- | Type of a reprinting function
 type Reprinting m = forall node . Typeable node => node -> m (Maybe (RefactorType, Source, Span))
 
 -- | Specify a refactoring type
 data RefactorType = Before | After | Replace
+    deriving Show -- for debugging
 
 -- | The reprint algorithm takes a refactoring (parameteric in
 -- | some monad m) and turns an arbitrary pretty-printable type 'ast'
@@ -98,43 +97,42 @@ reprint reprinting ast input
     -- Initial state comprises start cursor and input source
     let state_0 = (initPosition, input)
     -- Enter the top-node of a zipper for `ast'
-    refactorings <- enter reprinting (toZipper ast) []
+    refactorings <- enter reprinting (toZipper ast)
     let comp = process . sort' $ refactorings
     (out, (_, remaining)) <- runStateT comp state_0
     -- Add to the output source the remaining input source
     return (out <> remaining)
+  where
+    sort' = sortOn (\(_,_,sp) -> sp)
 
+-- | Take a refactoring and a zipper to produce a list of refactorings
+enter :: Monad m => Reprinting m -> Zipper ast -> m [(RefactorType, Source, Span)]
+enter reprinting zipper = enter' reprinting zipper mempty
 
--- | Take a refactoring and a zipper producing a stateful Source transformer with Position state.
-enter :: Monad m => Reprinting m -> Zipper ast -> [(RefactorType, Source, Span)]
-      -> m [(RefactorType, Source, Span)]
-enter reprinting zipper acc = do
+enter' :: Monad m => Reprinting m -> Zipper ast -> [(RefactorType, Source, Span)]
+       -> m [(RefactorType, Source, Span)]
+enter' reprinting zipper acc = do
     -- Step 1: Apply a refactoring
     refactoringInfo <- query reprinting zipper
-
     -- Step 2: Deal with refactored code or go to children
     acc <- case refactoringInfo of
       -- No refactoring; go to children
       Nothing -> go down' acc
-      -- A refactoring was applied
+      -- A refactoring was applied, add it to the accumulator
       Just r -> return (r : acc)
-
-    -- Step 3: Enter the right sibling of the current context
+    -- Step 3: Enter the left sibling of the current focus
     acc <- go right acc
-
-    -- Finally append output of current context/children
-    -- and right sibling
+    -- Finally return the accumulated refactorings
     return acc
 
   where
     go direction acc =
         case direction zipper of
           -- Go to next node if there is one
-          Just zipper -> enter reprinting zipper acc
+          Just zipper -> enter' reprinting zipper acc
           -- Otherwise return the empty string
           Nothing -> return acc
 
-sort' = sortBy (\(_,_,sp) (_,_,sp') -> compare sp sp')
 
 process :: Monad m => [(RefactorType, Source, Span)] -> StateT (Position, Source) m Source
 process refactorings = do
