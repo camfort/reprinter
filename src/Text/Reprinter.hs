@@ -134,7 +134,7 @@ enter reprinting zipper acc = do
           -- Otherwise return the empty string
           Nothing -> return acc
 
-sort' = sortBy (\(_,_,(lb,_)) (_,_,(lb',_)) -> compare lb lb')
+sort' = sortBy (\(_,_,sp) (_,_,sp') -> compare sp sp')
 
 process :: Monad m => [(RefactorType, Source, Span)] -> StateT (Position, Source) m Source
 process refactorings = do
