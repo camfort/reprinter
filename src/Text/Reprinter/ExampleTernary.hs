@@ -75,10 +75,18 @@ instance Refactorable Expr where
   getSpan (Var _ s _)     = s
   getSpan (Const _ s _)   = s
 
+instance Refactorable Op where
+  isRefactored (Add True _) = Just Replace
+  isRefactored _ = Nothing
+
+  getSpan (Add _ s) = s
+
 exprReprinter :: Reprinting Identity
-exprReprinter = catchAll `extQ` reprintExpr
+exprReprinter = catchAll `extQ` reprintExpr `extQ` reprintOp
   where   reprintExpr x =
             genReprinting  (return . Text.pack . pretty) (x :: Expr)
+          reprintOp x =
+            genReprinting  (return . Text.pack . pretty) (x :: Op)
 
 class Pretty a where
   pretty :: a -> String
