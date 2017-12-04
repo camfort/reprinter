@@ -165,16 +165,16 @@ process refactorings = do
 -- Given a lower-bound and upper-bound pair of Positions, split the
 -- incoming Source based on the distance between the Position pairs
 splitBySpan :: Span -> Source -> (Source, Source)
-splitBySpan ((lowerLn, lowerCol), (upperLn, upperCol)) =
-    subtext mempty (lowerLn, lowerCol)
+splitBySpan (lower, upper) =
+    subtext mempty lower
   where
-    subtext acc cursor@(cursorLn, cursorCol) input
-      | cursorLn <= lowerLn && (cursorCol >= lowerCol ==> cursorLn < lowerLn) =
+    subtext acc cursor input
+      | cursor < lower =
           case Text.uncons input of
             Nothing -> done
             Just ('\n', input') -> subtext acc (advanceLine cursor) input'
             Just (_, input')    -> subtext acc (advanceCol cursor) input'
-      | cursorLn <= upperLn && (cursorCol >= upperCol ==> cursorLn < upperLn) =
+      | cursor < upper =
           case Text.uncons input of
             Nothing -> done
             Just ('\n', input') -> subtext (Text.cons '\n' acc) (advanceLine cursor) input'
@@ -182,12 +182,6 @@ splitBySpan ((lowerLn, lowerCol), (upperLn, upperCol)) =
       | otherwise = done
       where done = (Text.reverse acc, input)
 
-
--- Logical implication operator.
-(==>) :: Bool -> Bool -> Bool
-True ==> False = False
-_    ==> _     = True
-infix 2 ==>
 
 
 -- | Infrastructure for building the reprinter "plugins"
