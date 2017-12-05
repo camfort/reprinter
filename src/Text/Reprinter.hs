@@ -97,68 +97,73 @@ reprint reprinting ast input
     -- Initial state comprises start cursor and input source
     let state_0 = (initPosition, input)
     -- Enter the top-node of a zipper for `ast'
-    refactorings <- enter reprinting (toZipper ast)
-    let comp = process . sort' $ refactorings
+    let comp = enter reprinting (toZipper ast)
     (out, (_, remaining)) <- runStateT comp state_0
     -- Add to the output source the remaining input source
     return (out <> remaining)
-  where
-    sort' = sortOn (\(_,_,sp) -> sp)
+
 
 -- | Take a refactoring and a zipper to produce a list of refactorings
-enter :: Monad m => Reprinting m -> Zipper ast -> m [(RefactorType, Source, Span)]
-enter reprinting zipper = enter' reprinting zipper mempty
-
-enter' :: Monad m => Reprinting m -> Zipper ast -> [(RefactorType, Source, Span)]
-       -> m [(RefactorType, Source, Span)]
-enter' reprinting zipper acc = do
-    -- Step 1: Apply a refactoring
-    refactoringInfo <- query reprinting zipper
-    -- Step 2: Deal with refactored code or go to children
-    acc <- case refactoringInfo of
-      -- No refactoring; go to children
-      Nothing -> go down' acc
-      -- A refactoring was applied, add it to the accumulator
-      Just r -> return (r : acc)
-    -- Step 3: Enter the left sibling of the current focus
-    acc <- go right acc
-    -- Finally return the accumulated refactorings
-    return acc
+enter :: Monad m => Reprinting m -> Zipper ast
+      -> StateT (Position, Source) m Source
+enter reprinting zipper = do
+    -- Get the refactorings
+    rs <- lift $ getRefactorings reprinting zipper []
+    -- Do the splicing
+    (process . sort' . reverse) rs
 
   where
-    go direction acc =
-        case direction zipper of
-          -- Go to next node if there is one
-          Just zipper -> enter' reprinting zipper acc
-          -- Otherwise return the empty string
-          Nothing -> return acc
+    getRefactorings :: Monad m => Reprinting m -> Zipper ast -> [(RefactorType, Source, Span)]
+                    -> m [(RefactorType, Source, Span)]
+    getRefactorings reprinting zipper acc = do
+        -- Step 1: Apply a refactoring
+        refactoringInfo <- query reprinting zipper
+        -- Step 2: Deal with refactored code or go to children
+        acc <- case refactoringInfo of
+          -- No refactoring; go to children
+          Nothing -> go down' acc
+          -- A refactoring was applied, add it to the accumulator
+          Just r -> return (r : acc)
+        -- Step 3: Enter the left sibling of the current focus
+        acc <- go right acc
+        -- Finally return the accumulated refactorings
+        return acc
 
+      where
+        go direction acc =
+            case direction zipper of
+              -- Go to next node if there is one
+              Just zipper -> getRefactorings reprinting zipper acc
+              -- Otherwise return the empty string
+              Nothing -> return acc
 
-process :: Monad m => [(RefactorType, Source, Span)] -> StateT (Position, Source) m Source
-process refactorings = do
-  srcs <- forM refactorings $ \(typ, output, (lb, ub)) -> do
-    (cursor, inp) <- get
-    case typ of
-      Replace -> do
-        -- Get soure up to start of refactored node
-        let (pre, inp') = splitBySpan (cursor, lb) inp
-        -- Remove source covered by refactoring
-        let (_, inp'') = splitBySpan (lb, ub) inp'
-        put (ub, inp'')
-        return (pre <> output)
-      After -> do
-        -- Get source up to end of the refactored node
-        let (pre, inp') = splitBySpan (cursor, ub) inp
-        put (ub, inp')
-        return (pre <> output)
-      Before -> do
-        -- Get source up to start of refactored node
-        let (pre, inp') = splitBySpan (cursor, lb) inp
-        -- Discard portion consumed by the refactoring
-        let (post, inp'') = splitBySpan (lb, ub) inp'
-        put (ub, inp'')
-        return (pre <> output <> post)
-  return $ Text.concat srcs
+    sort' = sortOn (\(_,_,sp) -> sp)
+
+    process :: Monad m => [(RefactorType, Source, Span)] -> StateT (Position, Source) m Source
+    process refactorings = do
+        srcs <- forM refactorings $ \(typ, output, (lb, ub)) -> do
+          (cursor, inp) <- get
+          case typ of
+            Replace -> do
+              -- Get soure up to start of refactored node
+              let (pre, inp') = splitBySpan (cursor, lb) inp
+              -- Remove source covered by refactoring
+              let (_, inp'') = splitBySpan (lb, ub) inp'
+              put (ub, inp'')
+              return (pre <> output)
+            After -> do
+              -- Get source up to end of the refactored node
+              let (pre, inp') = splitBySpan (cursor, ub) inp
+              put (ub, inp')
+              return (pre <> output)
+            Before -> do
+              -- Get source up to start of refactored node
+              let (pre, inp') = splitBySpan (cursor, lb) inp
+              -- Discard portion consumed by the refactoring
+              let (post, inp'') = splitBySpan (lb, ub) inp'
+              put (ub, inp'')
+              return (pre <> output <> post)
+        return $ Text.concat srcs
 
 
 
