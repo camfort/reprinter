@@ -3,7 +3,7 @@
 
 module Text.Reprinter
   (
-    reprint
+    reprintSort
   , Source
   , Position
   , initPosition
@@ -21,12 +21,14 @@ module Text.Reprinter
   , RefactorType(..)
   ) where
 
+import Control.Monad (forM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.State.Lazy
 import qualified Data.Text.Lazy as Text
 import Data.Data
 import Data.Generics.Zipper
 import Data.Monoid ((<>), mempty)
+import Data.List (sortOn)
 
 -- | Text from source file
 type Source = Text.Text
@@ -80,12 +82,13 @@ type Reprinting m = forall node . Typeable node => node -> m (Maybe (RefactorTyp
 
 -- | Specify a refactoring type
 data RefactorType = Before | After | Replace
+    deriving Show -- for debugging
 
 -- | The reprint algorithm takes a refactoring (parameteric in
 -- | some monad m) and turns an arbitrary pretty-printable type 'ast'
 -- | into a monadic Source transformer.
-reprint :: (Monad m, Data ast) => Reprinting m -> ast -> Source -> m Source
-reprint reprinting ast input
+reprintSort :: (Monad m, Data ast) => Reprinting m -> ast -> Source -> m Source
+reprintSort reprinting ast input
   -- If the input is empty return empty
   | Text.null input = return mempty
 
@@ -94,74 +97,85 @@ reprint reprinting ast input
     -- Initial state comprises start cursor and input source
     let state_0 = (initPosition, input)
     -- Enter the top-node of a zipper for `ast'
-    let comp = enter reprinting (toZipper ast)
+    let comp = enter' reprinting (toZipper ast)
     (out, (_, remaining)) <- runStateT comp state_0
     -- Add to the output source the remaining input source
     return (out <> remaining)
 
--- | Take a refactoring and a zipper producing a stateful Source transformer with Position state.
-enter :: Monad m => Reprinting m -> Zipper ast -> StateT (Position, Source) m Source
-enter reprinting zipper = do
+
+-- | Take a refactoring and a zipper to produce a list of refactorings
+enter' :: Monad m => Reprinting m -> Zipper ast
+      -> StateT (Position, Source) m Source
+enter' reprinting zipper = do
+    -- Step 1: Get refactorings via AST zipper traversal
+    rs <- lift $ getRefactorings reprinting zipper []
+    -- Step 2: Do the splicing on the sorted refactorings
+    srcs <- mapM splice (sortBySpan . reverse $ rs)
+    return $ Text.concat srcs
+  where
+    sortBySpan = sortOn (\(_,_,sp) -> sp)
+
+getRefactorings :: Monad m => Reprinting m -> Zipper ast -> [(RefactorType, Source, Span)]
+                    -> m [(RefactorType, Source, Span)]
+getRefactorings reprinting zipper acc = do
     -- Step 1: Apply a refactoring
-    refactoringInfo <- lift (query reprinting zipper)
-
+    refactoringInfo <- query reprinting zipper
     -- Step 2: Deal with refactored code or go to children
-    output <- case refactoringInfo of
+    acc <- case refactoringInfo of
       -- No refactoring; go to children
-      Nothing -> go down'
-      -- A refactoring was applied
-      Just (typ, output, (lb, ub)) -> do
-        (cursor, inp) <- get
-        case typ of
-          Replace -> do
-            -- Get soure up to start of refactored node
-            let (pre, inp') = splitBySpan (cursor, lb) inp
-            -- Remove source covered by refactoring
-            let (_, inp'') = splitBySpan (lb, ub) inp'
-            put (ub, inp'')
-            return (pre <> output)
-          After -> do
-            -- Get source up to end of the refactored node
-            let (pre, inp') = splitBySpan (cursor, ub) inp
-            put (ub, inp')
-            return (pre <> output)
-          Before -> do
-            -- Get source up to start of refactored node
-            let (pre, inp') = splitBySpan (cursor, lb) inp
-            -- Discard portion consumed by the refactoring
-            let (post, inp'') = splitBySpan (lb, ub) inp'
-            put (ub, inp'')
-            return (pre <> output <> post)
-
-    -- Step 3: Enter the right sibling of the current context
-    outputSib <- go right
-
-    -- Finally append output of current context/children
-    -- and right sibling
-    return (output <> outputSib)
+      Nothing -> go down' acc
+      -- A refactoring was applied, add it to the accumulator
+      Just r -> return (r : acc)
+    -- Step 3: Enter the left sibling of the current focus
+    acc <- go right acc
+    -- Finally return the accumulated refactorings
+    return acc
 
   where
-    go direction =
+    go direction acc =
         case direction zipper of
           -- Go to next node if there is one
-          Just zipper -> enter reprinting zipper
+          Just zipper -> getRefactorings reprinting zipper acc
           -- Otherwise return the empty string
-          Nothing -> return mempty
+          Nothing -> return acc
 
+splice :: Monad m => (RefactorType, Source, Span) -> StateT (Position, Source) m Source
+splice (typ, output, (lb, ub)) = do
+    (cursor, inp) <- get
+    case typ of
+      Replace -> do
+        -- Get soure up to start of refactored node
+        let (pre, inp') = splitBySpan (cursor, lb) inp
+        -- Remove source covered by refactoring
+        let (_, inp'') = splitBySpan (lb, ub) inp'
+        put (ub, inp'')
+        return (pre <> output)
+      After -> do
+        -- Get source up to end of the refactored node
+        let (pre, inp') = splitBySpan (cursor, ub) inp
+        put (ub, inp')
+        return (pre <> output)
+      Before -> do
+        -- Get source up to start of refactored node
+        let (pre, inp') = splitBySpan (cursor, lb) inp
+        -- Discard portion consumed by the refactoring
+        let (post, inp'') = splitBySpan (lb, ub) inp'
+        put (ub, inp'')
+        return (pre <> output <> post)
 
 -- Given a lower-bound and upper-bound pair of Positions, split the
 -- incoming Source based on the distance between the Position pairs
 splitBySpan :: Span -> Source -> (Source, Source)
-splitBySpan ((lowerLn, lowerCol), (upperLn, upperCol)) =
-    subtext mempty (lowerLn, lowerCol)
+splitBySpan (lower, upper) =
+    subtext mempty lower
   where
-    subtext acc cursor@(cursorLn, cursorCol) input
-      | cursorLn <= lowerLn && (cursorCol >= lowerCol ==> cursorLn < lowerLn) =
+    subtext acc cursor input
+      | cursor < lower =
           case Text.uncons input of
             Nothing -> done
             Just ('\n', input') -> subtext acc (advanceLine cursor) input'
             Just (_, input')    -> subtext acc (advanceCol cursor) input'
-      | cursorLn <= upperLn && (cursorCol >= upperCol ==> cursorLn < upperLn) =
+      | cursor < upper =
           case Text.uncons input of
             Nothing -> done
             Just ('\n', input') -> subtext (Text.cons '\n' acc) (advanceLine cursor) input'
@@ -169,12 +183,6 @@ splitBySpan ((lowerLn, lowerCol), (upperLn, upperCol)) =
       | otherwise = done
       where done = (Text.reverse acc, input)
 
-
--- Logical implication operator.
-(==>) :: Bool -> Bool -> Bool
-True ==> False = False
-_    ==> _     = True
-infix 2 ==>
 
 
 -- | Infrastructure for building the reprinter "plugins"
