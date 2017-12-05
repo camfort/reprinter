@@ -25,6 +25,7 @@ library
   other-modules:
       Text.Reprinter.Example
       Text.Reprinter.ExampleTernary
+      Paths_reprinter
   build-depends:
       base >=4.9 && <5
     , text >=1.2.2 && <2
