@@ -53,7 +53,7 @@ go src = putStrLn . Text.unpack . refactor $ src
 
 refactor :: Source -> Source
 refactor input = runIdentity
-               . (\ast -> reprint exprReprinter ast input)
+               . (\ast -> reprintSort exprReprinter ast input)
                . refactorTouch
                . parse  $ input
 
@@ -134,7 +134,6 @@ refactorTouch = map (\(Decl s n e) -> (Decl s n (go e)))
     go (App r s (Add _ s') e1 e2) = App r s (Add True s') (go e1) (go e2)
     go (Var r s n) = Var True s n
     go (Const r s v) = Const True s v
-    go e = e
 
 -- eval :: Expr -> State [(String, Int)] (Maybe Int)
 -- eval (Plus _ _ e1 e2) = do
