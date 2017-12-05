@@ -4,6 +4,7 @@
 module Text.Reprinter
   (
     reprintSort
+  , reprint
   , Source
   , Position
   , initPosition
@@ -83,6 +84,52 @@ type Reprinting m = forall node . Typeable node => node -> m (Maybe (RefactorTyp
 -- | Specify a refactoring type
 data RefactorType = Before | After | Replace
     deriving Show -- for debugging
+
+-- | The reprint algorithm takes a refactoring (parameteric in
+-- | some monad m) and turns an arbitrary pretty-printable type 'ast'
+-- | into a monadic Source transformer.
+reprint :: (Monad m, Data ast) => Reprinting m -> ast -> Source -> m Source
+reprint reprinting ast input
+  -- If the input is empty return empty
+  | Text.null input = return mempty
+
+  -- Otherwise proceed with the algorithm
+  | otherwise = do
+    -- Initial state comprises start cursor and input source
+    let state_0 = (initPosition, input)
+    -- Enter the top-node of a zipper for `ast'
+    let comp = enter reprinting (toZipper ast)
+    (out, (_, remaining)) <- runStateT comp state_0
+    -- Add to the output source the remaining input source
+    return (out <> remaining)
+
+-- | Take a refactoring and a zipper producing a stateful Source transformer with Position state.
+enter :: Monad m => Reprinting m -> Zipper ast -> StateT (Position, Source) m Source
+enter reprinting zipper = do
+    -- Step 1: Apply a refactoring
+    refactoringInfo <- lift (query reprinting zipper)
+
+    -- Step 2: Deal with refactored code or go to children
+    output <- case refactoringInfo of
+      -- No refactoring; go to children
+      Nothing -> go down'
+      -- A refactoring was applied
+      Just r -> splice r
+    -- Step 3: Enter the right sibling of the current context
+    outputSib <- go right
+
+    -- Finally append output of current context/children
+    -- and right sibling
+    return (output <> outputSib)
+
+  where
+    go direction =
+        case direction zipper of
+          -- Go to next node if there is one
+          Just zipper -> enter reprinting zipper
+          -- Otherwise return the empty string
+          Nothing -> return mempty
+
 
 -- | The reprint algorithm takes a refactoring (parameteric in
 -- | some monad m) and turns an arbitrary pretty-printable type 'ast'
