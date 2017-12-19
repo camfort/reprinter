@@ -24,4 +24,5 @@ This is useful technology for constructing refactoring tools
 as well as IDEs, interactive theorem provers, and verification and
 specification tools.
 
-See the [paper](https://www.cs.kent.ac.uk/people/staff/dao7/publ/reprinter2017.pdf) for further information.
+See the [paper](https://www.cs.kent.ac.uk/people/staff/dao7/publ/reprinter2017.pdf)
+for further information.

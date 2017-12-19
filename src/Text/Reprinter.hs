@@ -2,34 +2,41 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 
 module Text.Reprinter
-  (
-    reprintSort
-  , reprint
-  , Source
+  ( module Data.Functor.Identity
+  , module Data.Generics
+  , module Data.Generics.Zipper
   , Position
-  , initPosition
-  , initLine
-  , initCol
-  , mkLine
-  , mkCol
-  , advanceLine
-  , advanceCol
-  , Span
+  , RefactorType(..)
+  , Refactorable(..)
   , Reprinting
+  , Source
+  , Span
+  , advanceCol
+  , advanceLine
   , catchAll
   , genReprinting
-  , Refactorable(..)
-  , RefactorType(..)
+  , initCol
+  , initLine
+  , initPosition
+  , mkCol
+  , mkLine
+  , reprint
+  , reprintSort
   ) where
+
+-- Import solely for re-exporting for library clients
+import Data.Functor.Identity
+import Data.Generics
+--
 
 import Control.Monad (forM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.State.Lazy
-import qualified Data.Text.Lazy as Text
 import Data.Data
 import Data.Generics.Zipper
-import Data.Monoid ((<>), mempty)
 import Data.List (sortOn)
+import Data.Monoid ((<>), mempty)
+import qualified Data.Text.Lazy as Text
 
 -- | Text from source file
 type Source = Text.Text
