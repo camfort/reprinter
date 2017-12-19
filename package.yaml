@@ -3,7 +3,7 @@ version: '0.2.0.0'
 synopsis: Scrap Your Reprinter
 description: A datatype generic algorithm for layout-preserving refactoring
 category: Text
-author: Dominic Orchard, Harry Clarke
+author: Dominic Orchard, Vilem-Benjamin Liepelt, Harry Clarke
 maintainer: d.a.orchard@kent.ac.uk
 license: Apache-2.0
 github: camfort/reprinter
@@ -15,9 +15,18 @@ library:
   exposed-modules:
   - Text.Reprinter
   dependencies:
+  - mtl >=2.2 && <2.3
+  - syb >=0.6 && <0.7
+  - syz ==0.2.0.0
   - text >=1.2.2 && <2
   - transformers >=0.5 && <0.6
-  - syb >=0.6 && <0.7
-  - uniplate >=1.6 && <1.7
-  - mtl >=2.2 && <2.3
-  - syz ==0.2.0.0
+
+tests:
+  spec:
+    main: Hspec.hs
+    source-dirs: tests/hspec
+    dependencies:
+    - hspec
+    - mtl
+    - reprinter
+    - text
