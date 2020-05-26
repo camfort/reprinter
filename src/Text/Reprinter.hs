@@ -36,10 +36,10 @@ import Data.Data
 import Data.Generics.Zipper
 import Data.List (sortOn)
 import Data.Monoid ((<>), mempty)
-import qualified Data.Text.Lazy as Text
+import qualified Data.ByteString.Char8 as BC
 
 -- | Text from source file
-type Source = Text.Text
+type Source = BC.ByteString
 
 -- | A line within the source text
 newtype Line = Line Int deriving (Data, Eq, Ord, Show)
@@ -98,7 +98,7 @@ data RefactorType = Before | After | Replace
 reprint :: (Monad m, Data ast) => Reprinting m -> ast -> Source -> m Source
 reprint reprinting ast input
   -- If the input is empty return empty
-  | Text.null input = return mempty
+  | BC.null input = return mempty
 
   -- Otherwise proceed with the algorithm
   | otherwise = do
@@ -144,7 +144,7 @@ enter reprinting zipper = do
 reprintSort :: (Monad m, Data ast) => Reprinting m -> ast -> Source -> m Source
 reprintSort reprinting ast input
   -- If the input is empty return empty
-  | Text.null input = return mempty
+  | BC.null input = return mempty
 
   -- Otherwise proceed with the algorithm
   | otherwise = do
@@ -165,7 +165,7 @@ enter' reprinting zipper = do
     rs <- lift $ getRefactorings reprinting zipper []
     -- Step 2: Do the splicing on the sorted refactorings
     srcs <- mapM splice (sortBySpan . reverse $ rs)
-    return $ Text.concat srcs
+    return $ BC.concat srcs
   where
     sortBySpan = sortOn (\(_,_,sp) -> sp)
 
@@ -225,17 +225,17 @@ splitBySpan (lower, upper) =
   where
     subtext acc cursor input
       | cursor < lower =
-          case Text.uncons input of
+          case BC.uncons input of
             Nothing -> done
             Just ('\n', input') -> subtext acc (advanceLine cursor) input'
             Just (_, input')    -> subtext acc (advanceCol cursor) input'
       | cursor < upper =
-          case Text.uncons input of
+          case BC.uncons input of
             Nothing -> done
-            Just ('\n', input') -> subtext (Text.cons '\n' acc) (advanceLine cursor) input'
-            Just (x, input')    -> subtext (Text.cons x acc) (advanceCol cursor) input'
+            Just ('\n', input') -> subtext (BC.cons '\n' acc) (advanceLine cursor) input'
+            Just (x, input')    -> subtext (BC.cons x acc) (advanceCol cursor) input'
       | otherwise = done
-      where done = (Text.reverse acc, input)
+      where done = (BC.reverse acc, input)
 
 
 

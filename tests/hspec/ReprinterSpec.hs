@@ -5,7 +5,7 @@
 module ReprinterSpec where
 
 import Control.Monad.State
-import qualified Data.Text.Lazy as Text
+import qualified Data.ByteString.Char8 as BC
 import Data.Char
 import Data.Monoid ((<>))
 import Text.Reprinter
@@ -44,7 +44,7 @@ input_simple = "x  = +(1,0)\n"
 -- We then run this through a parser to get an AST, transform the AST,
 -- and run this through the reprinter to get:
 
-test = putStrLn . Text.unpack . refactor
+test = putStrLn . BC.unpack . refactor
 
 
 type AST = [Decl]
@@ -91,8 +91,8 @@ exprReprinter = catchAll `extQ` reprintExpr
 -- Expressions can be pretty-printed as
 prettyExpr :: Expr -> Source
 prettyExpr (Plus _ _ e1 e2) = "+(" <> prettyExpr e1 <> ", " <> prettyExpr e2 <> ")"
-prettyExpr (Var _ _ n)      = Text.pack n
-prettyExpr (Const _ _ n)    = Text.pack $ show n
+prettyExpr (Var _ _ n)      = BC.pack n
+prettyExpr (Const _ _ n)    = BC.pack $ show n
 
 -- Note we are *not* defining a pretty printer for declarations
 -- as we are never going to need to regenerate these
@@ -144,7 +144,7 @@ commentPrinter = catchAll `extQ` decl
       Just val -> do
         modify ((v,val) :)
         let msg = " // " ++ v ++ " = " ++ show val
-        return (Just (After, Text.pack msg, s))
+        return (Just (After, BC.pack msg, s))
 
 refactor2 :: Source -> Source
 refactor2 input =
@@ -153,7 +153,7 @@ refactor2 input =
   .  parse
   ) input
 
-test2 = putStrLn . Text.unpack . refactor2
+test2 = putStrLn . BC.unpack . refactor2
 
 
 
@@ -168,7 +168,7 @@ test2 = putStrLn . Text.unpack . refactor2
 -- satisfies the WELL-FORMEDNESS-CONDITION for ASTs representing source text
 
 parse :: Source -> AST
-parse s = evalState parseDecl (Text.unpack s, initPosition)
+parse s = evalState parseDecl (BC.unpack s, initPosition)
 
 type Parser = State (String, Position)
 
