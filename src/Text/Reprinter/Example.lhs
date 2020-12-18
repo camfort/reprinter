@@ -223,7 +223,7 @@ let's code that reprinting and the required pretty printer:
 
 \begin{code}
 -- See the 2017 paper and SYB documentation for more info on 'extQ' queries.
-exprReprinter :: Reprinting String Identity
+exprReprinter :: Monad m => Reprinting String m
 exprReprinter = catchAll `extQ` reprintExpr
   where
     reprintExpr x = genReprinting (return . prettyExpr) (x :: Expr Bool)
@@ -252,7 +252,7 @@ reprints.
 refactor :: String -> String
 refactor s =
       runIdentity
-    . flip (reprint exprReprinter) s
+    . flip (reprint exprReprinter pure) s
     . refactorZero
     . parse $ s
 
@@ -273,8 +273,8 @@ commentPrinter = catchAll `extQ` decl
     decl (Decl _ s v e) = do
       val <- eval (e :: Expr Bool)
       case val of
-        Nothing -> return $ Nothing -- declaration expression referenced a
-                                    -- variable before assignment: no annotation
+        Nothing -> return Nothing -- declaration expression referenced a
+                                  -- variable before assignment: no annotation
         Just val -> do
           modify ((v,val) :)    -- add mapping to environment
           let msg = " // " <> v <> " = " <> show val
@@ -291,7 +291,7 @@ eval (Var _ _ s) = get >>= return . lookup s
 refactorComment :: String -> String
 refactorComment input =
       flip evalState []
-    . flip (reprint commentPrinter) input
+    . flip (reprint commentPrinter pure) input
     . parse $ input
 \end{code}
 
@@ -357,7 +357,7 @@ parseExpr = do
     else do
        isVar <- peekChar isAlpha
        if isVar then do
-           name <- many isAlpha
+           name <- many (\x -> isAlpha x || x == '_')
            p2 <- getPos
            return $ Var False (p1, p2) name
        else do

@@ -21,6 +21,8 @@ module Text.Reprinter
   , genReprinting
   , reprint
   , reprintSort
+  , Line(..)
+  , Col(..)
   ) where
 
 -- Import solely for re-exporting for library clients
@@ -93,25 +95,27 @@ data RefactorType = Before | After | Replace
 -- | The reprint algorithm takes a refactoring (parameteric in
 -- | some monad m) and turns an arbitrary pretty-printable type 'ast'
 -- | into a monadic 'StringLike i' transformer.
-reprint :: (Monad m, Data ast, StringLike i) => Reprinting i m -> ast -> i -> m i
-reprint reprinting ast input
+reprint :: (Monad m, Data ast, StringLike i)
+   => Reprinting i m -> (i -> m i) -> ast -> i -> m i
+reprint reprinting splicer ast input
   -- If the input is empty return empty
   | slNull input = return mempty
-
   -- Otherwise proceed with the algorithm
   | otherwise = do
     -- Initial state comprises start cursor and input source
     let state_0 = (initPosition, input)
     -- Enter the top-node of a zipper for `ast'
-    let comp = enter reprinting (toZipper ast)
-    (out, (_, remaining)) <- runStateT comp state_0
-    -- Add to the output source the remaining input source
-    return (out <> remaining)
+    let comp    = enter reprinting splicer (toZipper ast)
+    (output, (_, inp)) <- runStateT comp state_0
+    -- Splice the remaining input and append to output source
+    remaining <- splicer inp
+    return (output <> remaining)
 
 -- | Take a refactoring and a zipper producing a stateful 'StringLike i'
 -- | transformer with Position state.
-enter :: (Monad m, StringLike i) => Reprinting i m -> Zipper ast -> StateT (Position, i) m i
-enter reprinting zipper = do
+enter :: (Monad m, StringLike i) =>
+  Reprinting i m -> (i -> m i) -> Zipper ast -> StateT (Position, i) m i
+enter reprinting splicer zipper = do
     -- Step 1: Apply a refactoring
     refactoringInfo <- lift (query reprinting zipper)
 
@@ -120,7 +124,7 @@ enter reprinting zipper = do
       -- No refactoring; go to children
       Nothing -> go down'
       -- A refactoring was applied
-      Just r -> splice r
+      Just r -> splice splicer r
     -- Step 3: Enter the right sibling of the current context
     outputSib <- go right
 
@@ -132,53 +136,53 @@ enter reprinting zipper = do
     go direction =
         case direction zipper of
           -- Go to next node if there is one
-          Just zipper -> enter reprinting zipper
+          Just zipper -> enter reprinting splicer zipper
           -- Otherwise return the empty string
           Nothing -> return mempty
 
 
 -- | The reprint algorithm takes a refactoring (parameteric in
--- | some monad m) and turns an arbitrary pretty-printable type 'ast'
--- | into a monadic 'StringLike i' transformer.
-reprintSort :: (Monad m, Data ast, StringLike i) => Reprinting i m -> ast -> i -> m i
-reprintSort reprinting ast input
+-- some monad m), and a splicer (also parametric in m) turns an arbitrary
+-- pretty-printable type 'ast' into a monadic 'StringLike i' transformer.
+reprintSort :: (Monad m, Data ast, StringLike i) =>
+  Reprinting i m -> (i -> m i) -> ast -> i -> m i
+reprintSort reprinting splicer ast input
   -- If the input is empty return empty
   | slNull input = return mempty
-
   -- Otherwise proceed with the algorithm
   | otherwise = do
     -- Initial state comprises start cursor and input source
     let state_0 = (initPosition, input)
     -- Enter the top-node of a zipper for `ast'
-    let comp = enter' reprinting (toZipper ast)
-    (out, (_, remaining)) <- runStateT comp state_0
-    -- Add to the output source the remaining input source
+    let comp    = enter' reprinting splicer (toZipper ast)
+    (out, (_, inp)) <- runStateT comp state_0
+    remaining       <- splicer inp
     return (out <> remaining)
 
 
 -- | Take a refactoring and a zipper to produce a list of refactorings
-enter' :: (Monad m, StringLike i) => Reprinting i m -> Zipper ast
-      -> StateT (Position, i) m i
-enter' reprinting zipper = do
+enter' :: (Monad m, StringLike i) =>
+  Reprinting i m -> (i -> m i) -> Zipper ast -> StateT (Position, i) m i
+enter' reprinting splicer zipper = do
     -- Step 1: Get refactorings via AST zipper traversal
     rs <- lift $ getRefactorings reprinting zipper []
     -- Step 2: Do the splicing on the sorted refactorings
-    srcs <- mapM splice (sortBySpan . reverse $ rs)
+    srcs <- mapM (splice splicer) . sortBySpan . reverse $ rs
     return $ mconcat srcs
   where
     sortBySpan = sortOn (\(_,_,sp) -> sp)
 
-getRefactorings :: (Monad m, StringLike i) => Reprinting i m -> Zipper ast -> [(RefactorType, i, Span)]
-                    -> m [(RefactorType, i, Span)]
+getRefactorings :: (Monad m, StringLike i) =>
+  Reprinting i m -> Zipper ast -> [(RefactorType, i, Span)] -> m [(RefactorType, i, Span)]
 getRefactorings reprinting zipper acc = do
     -- Step 1: Apply a refactoring
     refactoringInfo <- query reprinting zipper
     -- Step 2: Deal with refactored code or go to children
-    acc <- case refactoringInfo of
+    acc             <- case refactoringInfo of
       -- No refactoring; go to children
       Nothing -> go down' acc
       -- A refactoring was applied, add it to the accumulator
-      Just r -> return (r : acc)
+      Just r  -> return (r : acc)
     -- Step 3: Enter the left sibling of the current focus
     acc <- go right acc
     -- Finally return the accumulated refactorings
@@ -192,29 +196,37 @@ getRefactorings reprinting zipper acc = do
           -- Otherwise return the empty string
           Nothing -> return acc
 
-splice :: (Monad m, StringLike i) => (RefactorType, i, Span) -> StateT (Position, i) m i
-splice (typ, output, (lb, ub)) = do
+-- | This takes in a splicer function to allow for changes some as line breaks
+-- and indentation.
+splice :: (Monad m, StringLike i) =>
+  (i -> m i) -> (RefactorType, i, Span) -> StateT (Position, i) m i
+splice splicer (typ, output, (lb, ub)) = do
     (cursor, inp) <- get
     case typ of
       Replace -> do
-        -- Get soure up to start of refactored node
-        let (pre, inp') = splitBySpan (cursor, lb) inp
+        -- Get source up to start of refactored node
+        let (pre, inp' ) = splitBySpan (cursor, lb) inp
         -- Remove source covered by refactoring
-        let (_, inp'') = splitBySpan (lb, ub) inp'
+            (_  , inp'') = splitBySpan (lb, ub) inp'
         put (ub, inp'')
-        return (pre <> output)
+        spliceAndTrim [pre, output]
       After -> do
         -- Get source up to end of the refactored node
         let (pre, inp') = splitBySpan (cursor, ub) inp
         put (ub, inp')
-        return (pre <> output)
+        spliceAndTrim [pre, output]
       Before -> do
         -- Get source up to start of refactored node
-        let (pre, inp') = splitBySpan (cursor, lb) inp
+        let (pre, inp')   = splitBySpan (cursor, lb) inp
         -- Discard portion consumed by the refactoring
         let (post, inp'') = splitBySpan (lb, ub) inp'
         put (ub, inp'')
-        return (pre <> output <> post)
+        spliceAndTrim [pre, output, post]
+  where
+    spliceAndTrim = lift . fmap (foldr trimSpaces mempty) . traverse splicer
+    trimSpaces x y = if y /= mempty && (fst <$> slUncons y) == Just '\n'
+      then slDropWhileEnd (== ' ') x <> y
+      else x <> y
 
 -- | Given a lower-bound and upper-bound pair of Positions, split the
 -- | incoming 'StringLike i' based on the distance between the Position pairs.
@@ -236,16 +248,14 @@ splitBySpan (lower, upper) =
       | otherwise = done
       where done = (slReverse acc, input)
 
-
-
 -- | Infrastructure for building the reprinter "plugins"
 class Refactorable t where
   isRefactored :: t -> Maybe RefactorType
   getSpan      :: t -> Span
 
 -- | Essentially wraps the refactorable interface
-genReprinting :: (Monad m, Refactorable t, Typeable t, StringLike i)
-              => (t -> m i) -> t -> m (Maybe (RefactorType, i, Span))
+genReprinting :: (Monad m, Refactorable t, Typeable t, StringLike i) =>
+  (t -> m i) -> t -> m (Maybe (RefactorType, i, Span))
 genReprinting f z = case isRefactored z of
     Nothing -> return Nothing
     Just refactorType -> do

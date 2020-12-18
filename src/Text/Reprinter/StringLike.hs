@@ -5,7 +5,7 @@ module Text.Reprinter.StringLike
   , IsString(..)
   ) where
 
-import           Data.List   (uncons)
+import           Data.List   (uncons, dropWhileEnd)
 import           Data.String (IsString(..))
 
 import qualified Data.Text                  as TextStrict
@@ -20,13 +20,14 @@ import qualified Data.ByteString.Lazy.Char8 as BSCLazy
 -- type. Only operations required by the reprinting algorithm are included.
 -- Where possible, operations are prefilled using presumed-existing instances
 -- (any @[Char]@-like should be a monoid and have a @String -> a@).
-class (Monoid a, IsString a) => StringLike a where
+class (Eq a, Monoid a, IsString a) => StringLike a where
     slCons :: Char -> a -> a
     slUncons :: a -> Maybe (Char, a)
     slNull :: a -> Bool
     slReverse :: a -> a
     -- | like @unpack@
     slToString :: a -> String
+    slDropWhileEnd :: (Char -> Bool) -> a -> a
 
 -- same trick as used in IsString, to avoid possible ambiguity issues
 instance (a ~ Char) => StringLike [a] where
@@ -35,6 +36,7 @@ instance (a ~ Char) => StringLike [a] where
     slNull = null
     slReverse = reverse
     slToString = id
+    slDropWhileEnd = dropWhileEnd
 
 instance StringLike TextStrict.Text where
     slCons = TextStrict.cons
@@ -42,6 +44,7 @@ instance StringLike TextStrict.Text where
     slNull = TextStrict.null
     slReverse = TextStrict.reverse
     slToString = TextStrict.unpack
+    slDropWhileEnd = TextStrict.dropWhileEnd
 
 instance StringLike TextLazy.Text where
     slCons = TextLazy.cons
@@ -49,6 +52,7 @@ instance StringLike TextLazy.Text where
     slNull = TextLazy.null
     slReverse = TextLazy.reverse
     slToString = TextLazy.unpack
+    slDropWhileEnd = TextLazy.dropWhileEnd
 
 instance StringLike BSCStrict.ByteString where
     slCons = BSCStrict.cons
@@ -56,6 +60,7 @@ instance StringLike BSCStrict.ByteString where
     slNull = BSCStrict.null
     slReverse = BSCStrict.reverse
     slToString = BSCStrict.unpack
+    slDropWhileEnd p = snd . BSCStrict.spanEnd p
 
 instance StringLike BSCLazy.ByteString where
     slCons = BSCLazy.cons
@@ -63,3 +68,4 @@ instance StringLike BSCLazy.ByteString where
     slNull = BSCLazy.null
     slReverse = BSCLazy.reverse
     slToString = BSCLazy.unpack
+    slDropWhileEnd p = BSCLazy.fromStrict . snd . BSCStrict.spanEnd p . BSCLazy.toStrict
