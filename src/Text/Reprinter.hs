@@ -17,6 +17,7 @@ module Text.Reprinter
   , RefactorType(..)
   , Refactorable(..)
   , Reprinting
+  , ZipperReprinting
   , catchAll
   , genReprinting
   , reprint
@@ -86,6 +87,9 @@ type Span = (Position, Position)
 -- @i@ is the input type (something with a '[Char]'-like interface)
 type Reprinting i m = forall node . (Typeable node) => node -> m (Maybe (RefactorType, i, Span))
 
+-- | Zipper reprinting allows reprinting functions to take into account context
+type ZipperReprinting i ast m = Zipper ast -> m (Maybe (RefactorType, i, Span))
+
 -- | Specify a refactoring type
 data RefactorType = Before | After | Replace
     deriving Show -- for debugging
@@ -138,9 +142,12 @@ enter reprinting zipper = do
 
 
 -- | The reprint algorithm takes a refactoring (parameteric in
--- | some monad m) and turns an arbitrary pretty-printable type 'ast'
--- | into a monadic 'StringLike i' transformer.
-reprintSort :: (Monad m, Data ast, StringLike i) => Reprinting i m -> ast -> i -> m i
+--   some monad m) and turns an arbitrary pretty-printable type 'ast'
+--   into a monadic 'StringLike i' transformer.
+reprintSort
+    :: (Monad m, Data ast, StringLike i)
+    => ZipperReprinting i ast m -> ast -> i
+    -> m i
 reprintSort reprinting ast input
   -- If the input is empty return empty
   | slNull input = return mempty
@@ -157,8 +164,10 @@ reprintSort reprinting ast input
 
 
 -- | Take a refactoring and a zipper to produce a list of refactorings
-enter' :: (Monad m, StringLike i) => Reprinting i m -> Zipper ast
-      -> StateT (Position, i) m i
+enter'
+    :: (Monad m, StringLike i)
+    => ZipperReprinting i ast m -> Zipper ast
+    -> StateT (Position, i) m i
 enter' reprinting zipper = do
     -- Step 1: Get refactorings via AST zipper traversal
     rs <- lift $ getRefactorings reprinting zipper []
@@ -168,11 +177,13 @@ enter' reprinting zipper = do
   where
     sortBySpan = sortOn (\(_,_,sp) -> sp)
 
-getRefactorings :: (Monad m, StringLike i) => Reprinting i m -> Zipper ast -> [(RefactorType, i, Span)]
-                    -> m [(RefactorType, i, Span)]
+getRefactorings
+    :: (Monad m, StringLike i)
+    => ZipperReprinting i ast m -> Zipper ast -> [(RefactorType, i, Span)]
+    -> m [(RefactorType, i, Span)]
 getRefactorings reprinting zipper acc = do
     -- Step 1: Apply a refactoring
-    refactoringInfo <- query reprinting zipper
+    refactoringInfo <- reprinting zipper
     -- Step 2: Deal with refactored code or go to children
     acc <- case refactoringInfo of
       -- No refactoring; go to children
@@ -192,7 +203,10 @@ getRefactorings reprinting zipper acc = do
           -- Otherwise return the empty string
           Nothing -> return acc
 
-splice :: (Monad m, StringLike i) => (RefactorType, i, Span) -> StateT (Position, i) m i
+splice
+    :: (Monad m, StringLike i)
+    => (RefactorType, i, Span)
+    -> StateT (Position, i) m i
 splice (typ, output, (lb, ub)) = do
     (cursor, inp) <- get
     case typ of
