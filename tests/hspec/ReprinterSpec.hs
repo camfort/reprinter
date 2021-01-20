@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 
 module ReprinterSpec where
 
@@ -44,6 +44,24 @@ spec = do
         `shouldBe` "x = +(+(long_name_one, 0)\\\n\
                    \    , long_name_two)\n"
 
+  describe "Context reprinter" $ do
+    it "Different approach to appended comments" $
+      refactor4 ctxInput `shouldBe` ctxOutput
+
+ctxInput :: String
+ctxInput = "x = +(1,2)\n\
+           \y  =  +(x,0)\n\
+           \w = 2\n\
+           \// Calculate z\n\
+           \z  =  +( 1,  +(+(0,x)  ,y) )\n"
+
+ctxOutput :: String
+ctxOutput = "x = +(1,2) // x = 3\n\
+            \y  =  +(x,0) // y = 3\n\
+            \w = 2\n\
+            \// Calculate z\n\
+            \z  =  +( 1,  +(+(0,x)  ,y) ) // z = 7\n"
+
 input_simple :: String
 input_simple = "x  = +(1,0)\n"
 
@@ -72,6 +90,31 @@ refactorSplicer input =
     . parse
     )
     input
+
+-- Checks that we're looking at a top level expression
+commentPrinter2 :: ZipperReprinting String AST' (State [(String, Int)])
+commentPrinter2 z = case getHole @(Expr Bool) z of
+  Just Plus{} -> addComment
+  Just Var{} -> addComment
+  _ -> pure Nothing
+ where
+  addComment = case up z >>= getHole @(Decl Bool) of
+    Nothing -> pure Nothing
+    Just (Decl _ s v e) -> do
+      val <- eval e
+      case val of
+        Nothing -> pure Nothing
+        Just val -> do
+          modify ((v, val) :)
+          let msg = " // " ++ v ++ " = " ++ show val
+          return (Just (After, msg, s))
+
+refactor4 :: String -> String
+refactor4 input =
+  ( flip evalState []
+  . flip (reprintSort commentPrinter2 pure) input
+  . parse
+  ) input
 
 -- This is pointless but it demonstrates the splicer by taking lines over a limit
 addZero :: AST' -> AST'
