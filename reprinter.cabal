@@ -1,8 +1,10 @@
--- This file has been generated from package.yaml by hpack version 0.20.0.
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a7ba1330bf62df24af407f4fd2d204af695ad460b3bb38dd68b87c8612d22806
+-- hash: e37955f02e0c81057dba151216960a29ee46dea1faa50e8e133a174e37a3cef6
 
 name:           reprinter
 version:        0.2.0.0
@@ -15,33 +17,33 @@ author:         Dominic Orchard, Vilem-Benjamin Liepelt, Harry Clarke
 maintainer:     d.a.orchard@kent.ac.uk
 license:        Apache-2.0
 build-type:     Simple
-cabal-version:  >= 1.10
 
 source-repository head
   type: git
   location: https://github.com/camfort/reprinter
 
 library
+  exposed-modules:
+      Text.Reprinter
+  other-modules:
+      Paths_reprinter
   hs-source-dirs:
       src
   build-depends:
       base >=4.9 && <5
     , mtl >=2.2 && <2.3
-    , syb >=0.6 && <0.7
+    , syb >=0.6 && <0.8
     , syz ==0.2.0.0
     , text >=1.2.2 && <2
     , transformers >=0.5 && <0.6
-  exposed-modules:
-      Text.Reprinter
-  other-modules:
-      Text.Reprinter.Examples.Simple
-      Text.Reprinter.Examples.WeakSourceCoherence
-      Paths_reprinter
   default-language: Haskell2010
 
 test-suite spec
   type: exitcode-stdio-1.0
   main-is: Hspec.hs
+  other-modules:
+      ReprinterSpec
+      Paths_reprinter
   hs-source-dirs:
       tests/hspec
   build-depends:
@@ -50,8 +52,4 @@ test-suite spec
     , mtl
     , reprinter
     , text
-  other-modules:
-      ReprinterSpec
-      ReprinterWeakSpec
-      Paths_reprinter
   default-language: Haskell2010
