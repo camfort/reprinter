@@ -14,12 +14,14 @@ library:
   source-dirs: src
   exposed-modules:
   - Text.Reprinter
+  - Text.StringLike
   dependencies:
   - mtl >=2.2 && <2.3
-  - syb >=0.6 && <0.7
+  - syb >=0.6 && <1.0
   - syz ==0.2.0.0
   - text >=1.2.2 && <2
   - transformers >=0.5 && <0.6
+  - bytestring >=0.10.8.0 && <0.12.0.0
 
 tests:
   spec:
