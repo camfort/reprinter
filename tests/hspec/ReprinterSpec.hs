@@ -9,6 +9,7 @@ import qualified Data.Text.Lazy as Text
 import Data.Char
 import Data.Monoid ((<>))
 import Text.Reprinter
+import Text.StringLike
 
 import Test.Hspec
 
@@ -33,18 +34,21 @@ spec = do
       refactor2 input_simple `shouldBe` "x  = +(1,0) // x = 1\n"
 
 
+input :: Text.Text
 input = "x = +(1,2)\n\
         \y  =  +(x,0)\n\
         \// Calculate z\n\
         \z  =  +( 1,  +(+(0,x)  ,y) )\n"
 
+input_simple :: Text.Text
 input_simple = "x  = +(1,0)\n"
 
 
 -- We then run this through a parser to get an AST, transform the AST,
 -- and run this through the reprinter to get:
 
-test = putStrLn . Text.unpack . refactor
+test :: StringLike a => a -> IO ()
+test = putStrLn . slToString . refactor
 
 
 type AST = [Decl]
@@ -59,7 +63,7 @@ data Expr
   deriving (Data, Eq, Typeable)
 
 
-refactor :: Source -> Source
+refactor :: StringLike a => a -> a
 refactor input = runIdentity
                . (\ast -> reprint exprReprinter ast input)
                . refactorZero
@@ -89,10 +93,10 @@ exprReprinter = catchAll `extQ` reprintExpr
             genReprinting  (return . prettyExpr) (x :: Expr)
 
 -- Expressions can be pretty-printed as
-prettyExpr :: Expr -> Source
+prettyExpr :: StringLike a => Expr -> a
 prettyExpr (Plus _ _ e1 e2) = "+(" <> prettyExpr e1 <> ", " <> prettyExpr e2 <> ")"
-prettyExpr (Var _ _ n)      = Text.pack n
-prettyExpr (Const _ _ n)    = Text.pack $ show n
+prettyExpr (Var _ _ n)      = fromString n
+prettyExpr (Const _ _ n)    = fromString $ show n
 
 -- Note we are *not* defining a pretty printer for declarations
 -- as we are never going to need to regenerate these
@@ -144,16 +148,17 @@ commentPrinter = catchAll `extQ` decl
       Just val -> do
         modify ((v,val) :)
         let msg = " // " ++ v ++ " = " ++ show val
-        return (Just (After, Text.pack msg, s))
+        return (Just (After, fromString msg, s))
 
-refactor2 :: Source -> Source
+refactor2 :: StringLike a => a -> a
 refactor2 input =
   (  flip evalState []
   .  flip (reprint commentPrinter) input
   .  parse
   ) input
 
-test2 = putStrLn . Text.unpack . refactor2
+test2 :: StringLike a => a -> IO ()
+test2 = putStrLn . slToString . refactor2
 
 
 
@@ -167,8 +172,8 @@ test2 = putStrLn . Text.unpack . refactor2
 -- this is needed for reprint algorithm and its shape
 -- satisfies the WELL-FORMEDNESS-CONDITION for ASTs representing source text
 
-parse :: Source -> AST
-parse s = evalState parseDecl (Text.unpack s, initPosition)
+parse :: StringLike a => a -> AST
+parse s = evalState parseDecl (slToString s, initPosition)
 
 type Parser = State (String, Position)
 
