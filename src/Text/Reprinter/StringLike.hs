@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 
-module Text.StringLike
+module Text.Reprinter.StringLike
   ( StringLike(..)
   , IsString(..)
   ) where
@@ -25,6 +25,7 @@ class (Monoid a, IsString a) => StringLike a where
     slUncons :: a -> Maybe (Char, a)
     slNull :: a -> Bool
     slReverse :: a -> a
+    -- | like @unpack@
     slToString :: a -> String
 
 -- same trick as used in IsString, to avoid possible ambiguity issues
