@@ -14,7 +14,7 @@ library:
   source-dirs: src
   exposed-modules:
   - Text.Reprinter
-  - Text.StringLike
+  - Text.Reprinter.StringLike
   dependencies:
   - mtl >=2.2 && <2.3
   - syb >=0.6 && <1.0

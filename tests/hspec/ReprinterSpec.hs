@@ -5,11 +5,10 @@
 module ReprinterSpec where
 
 import Control.Monad.State
-import qualified Data.Text.Lazy as Text
 import Data.Char
 import Data.Monoid ((<>))
 import Text.Reprinter
-import Text.StringLike
+import Text.Reprinter.StringLike
 
 import Test.Hspec
 
@@ -34,20 +33,20 @@ spec = do
       refactor2 input_simple `shouldBe` "x  = +(1,0) // x = 1\n"
 
 
-input :: Text.Text
+input :: String
 input = "x = +(1,2)\n\
         \y  =  +(x,0)\n\
         \// Calculate z\n\
         \z  =  +( 1,  +(+(0,x)  ,y) )\n"
 
-input_simple :: Text.Text
+input_simple :: String
 input_simple = "x  = +(1,0)\n"
 
 
 -- We then run this through a parser to get an AST, transform the AST,
 -- and run this through the reprinter to get:
 
-test :: StringLike a => a -> IO ()
+test :: String -> IO ()
 test = putStrLn . slToString . refactor
 
 
@@ -63,7 +62,7 @@ data Expr
   deriving (Data, Eq, Typeable)
 
 
-refactor :: StringLike a => a -> a
+refactor :: String -> String
 refactor input = runIdentity
                . (\ast -> reprint exprReprinter ast input)
                . refactorZero
@@ -87,13 +86,13 @@ instance Refactorable Expr where
   getSpan (Var _ s _)     = s
   getSpan (Const _ s _)   = s
 
-exprReprinter :: Reprinting Identity
+exprReprinter :: Reprinting String Identity
 exprReprinter = catchAll `extQ` reprintExpr
   where   reprintExpr x =
             genReprinting  (return . prettyExpr) (x :: Expr)
 
 -- Expressions can be pretty-printed as
-prettyExpr :: StringLike a => Expr -> a
+prettyExpr :: Expr -> String
 prettyExpr (Plus _ _ e1 e2) = "+(" <> prettyExpr e1 <> ", " <> prettyExpr e2 <> ")"
 prettyExpr (Var _ _ n)      = fromString n
 prettyExpr (Const _ _ n)    = fromString $ show n
@@ -138,7 +137,7 @@ eval (Var _ _ s) = do
   l <- get
   return (lookup s l)
 
-commentPrinter :: Reprinting (State [(String, Int)])
+commentPrinter :: Reprinting String (State [(String, Int)])
 commentPrinter = catchAll `extQ` decl
   where
   decl (Decl s v e) = do
@@ -150,14 +149,14 @@ commentPrinter = catchAll `extQ` decl
         let msg = " // " ++ v ++ " = " ++ show val
         return (Just (After, fromString msg, s))
 
-refactor2 :: StringLike a => a -> a
+refactor2 :: String -> String
 refactor2 input =
   (  flip evalState []
   .  flip (reprint commentPrinter) input
   .  parse
   ) input
 
-test2 :: StringLike a => a -> IO ()
+test2 :: String -> IO ()
 test2 = putStrLn . slToString . refactor2
 
 

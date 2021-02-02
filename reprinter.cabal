@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: adf69d7e4447d7b3f7bc38ce9ab6821bec31c9139ab3149eb2d314b85d10763b
+-- hash: 206644964faaf41122b188e19afe5c95030ec66f043ffea34696b04bd7206686
 
 name:           reprinter
 version:        0.2.0.0
@@ -23,6 +23,11 @@ source-repository head
   location: https://github.com/camfort/reprinter
 
 library
+  exposed-modules:
+      Text.Reprinter
+      Text.Reprinter.StringLike
+  other-modules:
+      Paths_reprinter
   hs-source-dirs:
       src
   build-depends:
@@ -33,16 +38,14 @@ library
     , syz ==0.2.0.0
     , text >=1.2.2 && <2
     , transformers >=0.5 && <0.6
-  exposed-modules:
-      Text.Reprinter
-      Text.StringLike
-  other-modules:
-      Paths_reprinter
   default-language: Haskell2010
 
 test-suite spec
   type: exitcode-stdio-1.0
   main-is: Hspec.hs
+  other-modules:
+      ReprinterSpec
+      Paths_reprinter
   hs-source-dirs:
       tests/hspec
   build-depends:
@@ -51,7 +54,4 @@ test-suite spec
     , mtl
     , reprinter
     , text
-  other-modules:
-      ReprinterSpec
-      Paths_reprinter
   default-language: Haskell2010
