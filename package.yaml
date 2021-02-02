@@ -15,6 +15,7 @@ library:
   exposed-modules:
   - Text.Reprinter
   - Text.Reprinter.StringLike
+  - Text.Reprinter.Example
   dependencies:
   - mtl >=2.2 && <2.3
   - syb >=0.6 && <1.0

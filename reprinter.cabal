@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 206644964faaf41122b188e19afe5c95030ec66f043ffea34696b04bd7206686
+-- hash: 2e13a11a516803d1505fdbb34ab692c1d8ea04718626e102b06671c243e518b5
 
 name:           reprinter
 version:        0.2.0.0
@@ -26,6 +26,7 @@ library
   exposed-modules:
       Text.Reprinter
       Text.Reprinter.StringLike
+      Text.Reprinter.Example
   other-modules:
       Paths_reprinter
   hs-source-dirs:
