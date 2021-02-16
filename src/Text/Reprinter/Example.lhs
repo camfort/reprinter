@@ -1,11 +1,20 @@
 Scrap Your Reprinter: Example
 =============================
-This library gives you source reprinting "for free", providing your write your
-AST transformations to track how code moves and changes. This module aims to
-give an introduction to library usage. For a better view of the library itself,
-[the 2017 paper](https://www.cs.kent.ac.uk/people/staff/dao7/publ/reprinter2017.pdf)
-is a great read and goes over implementation in depth. (This module is adapted
-from Section 3.4.)
+
+Reprinting takes a source file and its (possible transformed) AST and
+"stitches" them together into a new source file. This library provides
+a generic reprinting algorithm that works on any AST with some modest
+requirements. Where any changes to the AST have been made the
+reprinting algorithm can be parameterised to hook into
+application-specific functionality for handling nodes in the AST that
+have been marked as transformed (e.g., applying a pretty printer to
+these parts).
+
+This module gives an introduction to library usage. For a better view
+of the library itself, [the 2017
+paper](https://www.cs.kent.ac.uk/people/staff/dao7/publ/reprinter2017.pdf)
+goes over implementation in depth. (This module is adapted from
+Section 3.4.)
 
 We demonstrate the library on a limited integer expression language (reused for
 the library tests). This is a literate Haskell/Markdown file, so feel free to
@@ -42,7 +51,7 @@ library to allow reprinting that preserves such secondary notation.
 Language definition
 -------------------
 Let's take a language targeting integer addition, plus variable assignments. Our
-top-level type will be an SSA-like list of *variable declaration-assigments*:
+top-level type will be an SSA-like list of *variable declaration-assignments*:
 
 \begin{code}
 type AST a = [Decl a]
@@ -50,10 +59,11 @@ data Decl a = Decl a Span String (Expr a)
     deriving (Eq, Data, Typeable, Show)
 \end{code}
 
-A `Decl _ _ var expr` assigns the value of an expression `expr` to a
-variable `var`. The AST is composed of a bunch of these `Decl`s.
+A `Decl a span var expr` represents the assignment of the value of an
+expression `expr` to a variable `var`. The AST is composed of a sequence
+(list) of these `Decl`s.
 
-Expressions are formed of variables, literals, and adding other expressions:
+Expressions are formed of variables, literals, and additions over expressions:
 
 \begin{code}
 data Expr a
@@ -63,12 +73,14 @@ data Expr a
     deriving (Eq, Data, Typeable, Show)
 \end{code}
 
-For our reprinting algorithm, every refactorable node in the AST must store
-position information (`Span`) and whether it's been refactored (and thus needs
-reprinting). In this case, we've parameterized our AST over an arbitrary data
-type `a`, which we use directly as an "is this refactored?" boolean. In a more
-complex AST, you could add this as a field to an existing node annotation
-record type.
+For our reprinting algorithm, every refactorable node in the AST must
+store position information (`Span`, i.e., the start and end point of
+this piece of syntax in the source code text) and whether it's been
+refactored (and thus needs reprinting). In this case, we've
+parameterised our AST over an arbitrary type `a`, which we specialise
+in the rest of this file to `Bool` to represent whether this node has
+been refactored or not. In a more complex AST, you could add this as a
+field to an existing node annotation record type.
 
 Note that the algorithm requires ASTs to have `Data` and `Typeable` instances.
 Deriving these automatically requires the `DeriveDataTypeable` language pragma.
@@ -124,7 +136,7 @@ exPaper = unlines
   ]
 \end{code}
 
-We'll produce the following:
+We'll produce the following refactored and reprinted output:
 
     > putStr exPaper
     x = +(1,2)
@@ -141,7 +153,7 @@ We'll produce the following:
 Writing a transformation
 ------------------------
 Putting concrete syntax aside, let's write a transformation for our AST - a
-refactor. A nice obvious one is replacing `x+0` (and `0+x`) expressions with
+refactoring. A nice obvious one is replacing `x+0` (and `0+x`) expressions with
 just `x`.
 
 \begin{code}
@@ -158,19 +170,21 @@ refactorZero = map $ \(Decl a s n e) -> Decl a s n (go e)
     markRefactored (Const _ _ i) s    = Const True s i
 \end{code}
 
-Note that when marking nodes as refactored, we replace the `x` expression that
-we're keeping with the span of the original `x+0` node. This is the behaviour we
-want - it's due to us "shifting" the position of `x`. In concrete syntax, we're
-making this change:
+Note that when marking nodes as refactored (`markRefactored`), we
+replace the `Span` of the refactored node with the span of the
+original `x+0` node- this allows the reprinting algorithm to replace
+the original part of the source code with the new refactored node.
+
+In concrete syntax, we're making changes like:
 
     + ( x , 0 )    becomes
     x
 
 See how `x` is pulled out. The `+(x,y)` expression is directly replaced with
-`x`, so we make sure to use the original position. Any comments following the
-expression will also shifted - *not* removed, because the reprinter only makes
+`x`, so we make sure to use the original span. Any comments following the
+expression will be `shifted' - *not* removed, because the reprinter only makes
 changes when a node in the AST indicates it has been refactored. Parts of a
-source file that aren't reflected in the AST will printed with no changes.
+source file that aren't captured in the AST will be printed with no changes.
 
 Reprinter plumbing
 ------------------
@@ -197,9 +211,11 @@ case, we're only writing an instance for `Expr`s, because we don't reprint
 `Decl`s directly. (If we wrote a variable renaming transformation, then it would
 be needed.)
 
-We're almost there. Next is defining a generic query telling what to do
-when encountering a refactored expression during reprinting. When this happens,
-we want to *reprint*, so we'll need an expression pretty printer as well.
+We're almost there. Next is defining a generic query telling what to
+do when encountering a refactored expression during reprinting. When
+this happens, we're going to need to turn ASTs (which may be
+completely new and distinct from the original source code) into
+concrete syntax, so we'll need an expression pretty printer as well.
 
 TODO: This uses Scrap your Boilerplate (SYB) directly. Check the SYB
 documentation and the 2017 paper.
