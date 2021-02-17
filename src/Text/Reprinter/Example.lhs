@@ -124,7 +124,7 @@ exComment = unlines
 
 Knowing all this, our aim is to take a formatted program source, parse it, apply
 a transformation to the AST, then reprint the program while keeping the original
-formatting. Starting with the given source
+formatting. Starting with the given source (taken from the 2017 paper)
 
 \begin{code}
 exPaper :: String
@@ -148,7 +148,6 @@ We'll produce the following refactored and reprinted output:
     y  =  x
     // Calculate z
     z  =  +( 1,  +(x ,y) )
-    >
 
 Writing a transformation
 ------------------------
@@ -211,16 +210,19 @@ case, we're only writing an instance for `Expr`s, because we don't reprint
 `Decl`s directly. (If we wrote a variable renaming transformation, then it would
 be needed.)
 
-We're almost there. Next is defining a generic query telling what to
-do when encountering a refactored expression during reprinting. When
-this happens, we're going to need to turn ASTs (which may be
-completely new and distinct from the original source code) into
-concrete syntax, so we'll need an expression pretty printer as well.
+We're almost there. Next we define a generic query over the AST that determines
+what we do for each node in the AST. This reprinting is straightforward:
 
-TODO: This uses Scrap your Boilerplate (SYB) directly. Check the SYB
-documentation and the 2017 paper.
+  * If an `Expr` is marked as refactored, replace it with the updated `Expr`
+    pretty-printed (AST -> concrete syntax)
+  * Else skip (if the node was a `Decl`, or an unrefactored `Expr`)
+
+Reprintings of this type can be generated with `genReprinting`. A later example
+writes the reprinting directly to annotate all nodes of a certain type. For now,
+let's code that reprinting and the required pretty printer:
 
 \begin{code}
+-- See the 2017 paper and SYB documentation for more info on 'extQ' queries.
 exprReprinter :: Reprinting String Identity
 exprReprinter = catchAll `extQ` reprintExpr
   where
@@ -235,6 +237,11 @@ prettyExpr (Const _ _ n)    = show n
 -- Note that we don't define a pretty printer for declarations, as we're not
 -- refactoring on that level, so won't ever reprint them.
 \end{code}
+
+`catchAll \`extQ\` reprintExpr` essentially says "try casting my my argument to
+use in `reprintExpr`, else default to `catchAll`" where `catchAll` always
+returns `Nothing` (meaning no refactoring/don't reprint). See the 2017 paper and
+Scrap Your Boilerplate (SYB) materials for more details.
 
 Finally, we put together a function that parses, runs our refactoring, then
 reprints.
@@ -253,10 +260,11 @@ refactor s =
 
 Further example: reprinting `After`
 -----------------------------------
-Comment reprinter, rewritten using version in tests. Actually runs on every
-expression, not just refactored ones?
-
-TODO: Explained in 2017 paper, Section 3.4.
+Using a monadic reprinter, we can write more complex reprintings. This example
+from the 2017 paper annotates every variable declaration with its value.
+Declarations are evaluated in order, building up a variable-value association
+list. The list is stored in the `State` monad, which is passed along through the
+reprinting.
 
 \begin{code}
 commentPrinter :: Reprinting String (State [(String, Int)])
@@ -265,10 +273,11 @@ commentPrinter = catchAll `extQ` decl
     decl (Decl _ s v e) = do
       val <- eval (e :: Expr Bool)
       case val of
-        Nothing -> return $ Nothing
+        Nothing -> return $ Nothing -- declaration expression referenced a
+                                    -- variable before assignment: no annotation
         Just val -> do
-          modify ((v,val) :)
-          let msg = " // " <> v <>" = " <> show val
+          modify ((v,val) :)    -- add mapping to environment
+          let msg = " // " <> v <> " = " <> show val
           return $ Just (After, msg, s)
 
 eval :: Expr a -> State [(String, Int)] (Maybe Int)
@@ -286,6 +295,8 @@ refactorComment input =
     . parse $ input
 \end{code}
 
+Unscrapped boilerplate: parser for example language
+---------------------------------------------------
 The remainder of this module defines a simple monadic parser for the language.
 It attempts to generate a position-tagged AST from a `String`.
 
