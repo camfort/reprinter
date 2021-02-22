@@ -238,7 +238,7 @@ prettyExpr (Const _ _ n)    = show n
 -- refactoring on that level, so won't ever reprint them.
 \end{code}
 
-`catchAll \`extQ\` reprintExpr` essentially says "try casting my my argument to
+`catchAll \`extQ\` reprintExpr` essentially says "try casting my argument to
 use in `reprintExpr`, else default to `catchAll`" where `catchAll` always
 returns `Nothing` (meaning no refactoring/don't reprint). See the 2017 paper and
 Scrap Your Boilerplate (SYB) materials for more details.
