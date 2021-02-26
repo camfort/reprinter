@@ -28,6 +28,8 @@ tests:
   spec:
     main: Hspec.hs
     source-dirs: tests/hspec
+    build-tools:
+    - hspec-discover
     dependencies:
     - hspec
     - mtl

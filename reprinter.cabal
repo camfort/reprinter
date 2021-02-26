@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2e13a11a516803d1505fdbb34ab692c1d8ea04718626e102b06671c243e518b5
+-- hash: 089fae7b732498c05efe37d4c38f0a53380380b95612517ffbbb6b38336fdc37
 
 name:           reprinter
 version:        0.2.0.0
@@ -49,6 +49,8 @@ test-suite spec
       Paths_reprinter
   hs-source-dirs:
       tests/hspec
+  build-tool-depends:
+      hspec-discover:hspec-discover
   build-depends:
       base >=4.9 && <5
     , hspec
