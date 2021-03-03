@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 089fae7b732498c05efe37d4c38f0a53380380b95612517ffbbb6b38336fdc37
+-- hash: 51c7c3d83184ed5705c38cb91f4c299ea882d3368bde8fb4911dd680fbeebf3a
 
 name:           reprinter
-version:        0.2.0.0
+version:        0.3.0.0
 synopsis:       Scrap Your Reprinter
 description:    A datatype generic algorithm for layout-preserving refactoring
 category:       Text
@@ -36,7 +36,7 @@ library
     , bytestring >=0.10.8.0 && <0.12.0.0
     , mtl >=2.2 && <2.3
     , syb >=0.6 && <1.0
-    , syz ==0.2.0.0
+    , syz >=0.2 && <0.3
     , text >=1.2.2 && <2
     , transformers >=0.5 && <0.6
   default-language: Haskell2010
