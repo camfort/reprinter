@@ -26,7 +26,7 @@ module Text.Reprinter
 -- Import solely for re-exporting for library clients
 import Data.Functor.Identity
 import Data.Generics
---
+
 
 import Text.Reprinter.StringLike
 import Control.Monad (forM)

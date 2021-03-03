@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 51c7c3d83184ed5705c38cb91f4c299ea882d3368bde8fb4911dd680fbeebf3a
+-- hash: 164cc4d2149c1ec8f25483d408c9daf06fa85d19cdf998cc487e76a9c03c3efe
 
 name:           reprinter
 version:        0.3.0.0
@@ -17,6 +17,8 @@ author:         Dominic Orchard, Vilem-Benjamin Liepelt, Harry Clarke
 maintainer:     d.a.orchard@kent.ac.uk
 license:        Apache-2.0
 build-type:     Simple
+extra-source-files:
+    CHANGELOG.md
 
 source-repository head
   type: git

@@ -8,6 +8,9 @@ maintainer: d.a.orchard@kent.ac.uk
 license: Apache-2.0
 github: camfort/reprinter
 
+extra-source-files:
+- CHANGELOG.md
+
 dependencies:
 - base >=4.9 && <5
 
