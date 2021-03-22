@@ -281,5 +281,4 @@ wrapBasicReprinter
     :: (Monad m, StringLike i)
     => Reprinting i m
     -> ZipperReprinting i m
-wrapBasicReprinter reprinting =
-    \zipper -> reprinting (fromZipper zipper)
+wrapBasicReprinter = query
