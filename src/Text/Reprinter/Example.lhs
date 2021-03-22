@@ -252,7 +252,7 @@ reprints.
 refactor :: String -> String
 refactor s =
       runIdentity
-    . flip (reprint exprReprinter) s
+    . flip (reprint (wrapBasicReprinter exprReprinter)) s
     . refactorZero
     . parse $ s
 
@@ -291,7 +291,7 @@ eval (Var _ _ s) = get >>= return . lookup s
 refactorComment :: String -> String
 refactorComment input =
       flip evalState []
-    . flip (reprint commentPrinter) input
+    . flip (reprint (wrapBasicReprinter commentPrinter)) input
     . parse $ input
 \end{code}
 

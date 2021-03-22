@@ -22,6 +22,7 @@ module Text.Reprinter
   , genReprinting
   , reprint
   , reprintSort
+  , wrapBasicReprinter
   ) where
 
 -- Import solely for re-exporting for library clients
@@ -88,7 +89,7 @@ type Span = (Position, Position)
 type Reprinting i m = forall node . (Typeable node) => node -> m (Maybe (RefactorType, i, Span))
 
 -- | Zipper reprinting allows reprinting functions to take into account context
-type ZipperReprinting i ast m = Zipper ast -> m (Maybe (RefactorType, i, Span))
+type ZipperReprinting i m = forall node . (Typeable node) => Zipper node -> m (Maybe (RefactorType, i, Span))
 
 -- | Specify a refactoring type
 data RefactorType = Before | After | Replace
@@ -97,7 +98,10 @@ data RefactorType = Before | After | Replace
 -- | The reprint algorithm takes a refactoring (parameteric in
 -- | some monad m) and turns an arbitrary pretty-printable type 'ast'
 -- | into a monadic 'StringLike i' transformer.
-reprint :: (Monad m, Data ast, StringLike i) => Reprinting i m -> ast -> i -> m i
+reprint
+    :: (Monad m, Data ast, StringLike i)
+    => ZipperReprinting i m -> ast -> i
+    -> m i
 reprint reprinting ast input
   -- If the input is empty return empty
   | slNull input = return mempty
@@ -114,10 +118,13 @@ reprint reprinting ast input
 
 -- | Take a refactoring and a zipper producing a stateful 'StringLike i'
 -- | transformer with Position state.
-enter :: (Monad m, StringLike i) => Reprinting i m -> Zipper ast -> StateT (Position, i) m i
+enter
+    :: (Monad m, StringLike i, Typeable ast)
+    => ZipperReprinting i m -> Zipper ast
+    -> StateT (Position, i) m i
 enter reprinting zipper = do
     -- Step 1: Apply a refactoring
-    refactoringInfo <- lift (query reprinting zipper)
+    refactoringInfo <- lift (reprinting zipper)
 
     -- Step 2: Deal with refactored code or go to children
     output <- case refactoringInfo of
@@ -146,7 +153,7 @@ enter reprinting zipper = do
 --   into a monadic 'StringLike i' transformer.
 reprintSort
     :: (Monad m, Data ast, StringLike i)
-    => ZipperReprinting i ast m -> ast -> i
+    => ZipperReprinting i m -> ast -> i
     -> m i
 reprintSort reprinting ast input
   -- If the input is empty return empty
@@ -165,8 +172,8 @@ reprintSort reprinting ast input
 
 -- | Take a refactoring and a zipper to produce a list of refactorings
 enter'
-    :: (Monad m, StringLike i)
-    => ZipperReprinting i ast m -> Zipper ast
+    :: (Monad m, StringLike i, Typeable ast)
+    => ZipperReprinting i m -> Zipper ast
     -> StateT (Position, i) m i
 enter' reprinting zipper = do
     -- Step 1: Get refactorings via AST zipper traversal
@@ -178,8 +185,8 @@ enter' reprinting zipper = do
     sortBySpan = sortOn (\(_,_,sp) -> sp)
 
 getRefactorings
-    :: (Monad m, StringLike i)
-    => ZipperReprinting i ast m -> Zipper ast -> [(RefactorType, i, Span)]
+    :: (Monad m, StringLike i, Typeable ast)
+    => ZipperReprinting i m -> Zipper ast -> [(RefactorType, i, Span)]
     -> m [(RefactorType, i, Span)]
 getRefactorings reprinting zipper acc = do
     -- Step 1: Apply a refactoring
@@ -269,3 +276,10 @@ genReprinting f z = case isRefactored z of
 -- | Catch all generic query
 catchAll :: Monad m => a -> m (Maybe b)
 catchAll _ = return Nothing
+
+wrapBasicReprinter
+    :: (Monad m, StringLike i)
+    => Reprinting i m
+    -> ZipperReprinting i m
+wrapBasicReprinter reprinting =
+    \zipper -> reprinting (fromZipper zipper)
