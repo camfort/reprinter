@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 164cc4d2149c1ec8f25483d408c9daf06fa85d19cdf998cc487e76a9c03c3efe
+-- hash: b19671665da6cf09b8aa157c387db536e02e3f8518551ed0fcfd6c5c43b40134
 
 name:           reprinter
 version:        0.3.0.0
@@ -16,6 +16,7 @@ bug-reports:    https://github.com/camfort/reprinter/issues
 author:         Dominic Orchard, Vilem-Benjamin Liepelt, Harry Clarke
 maintainer:     d.a.orchard@kent.ac.uk
 license:        Apache-2.0
+license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     CHANGELOG.md
