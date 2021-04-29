@@ -38,12 +38,14 @@ jobs:
     runs-on: ubuntu-latest
     name: Ubuntu / GHC ${{ matrix.ghc }}, Cabal ${{ matrix.cabal }}
     strategy:
+      fail-fast: false
       matrix:
         cabal: ["3.2"] # latest as of 2021-02-23
         ghc:
         - "8.6"
         - "8.8"
         - "8.10"
+        - "9.0"
     env:
       # note that all flags must be passed to every command even when
       # irrelevant, else Cabal will trigger arbitrary rebuilds
